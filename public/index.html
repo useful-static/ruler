@@ -96,6 +96,13 @@
     }
     .info .v { color: var(--fg); font-variant-numeric: tabular-nums; }
     .info .hint { color: var(--muted); }
+    .info .hot { cursor: pointer; border-bottom: 1px dashed currentColor; }
+    .info .hot:hover { color: var(--accent); }
+    .info input.editin {
+      font: inherit; color: var(--fg); background: var(--panel);
+      border: 1px solid var(--accent); border-radius: 5px; padding: 0 5px;
+      font-variant-numeric: tabular-nums; max-width: 12em;
+    }
 
     /* ---- calibration panel ---- */
     .panel { max-width: 720px; margin: 0 auto 20px; padding: 0 clamp(12px, 4vw, 28px); width: 100%; }
@@ -169,6 +176,9 @@
         <button class="primary" id="saveCal">Save</button>
         <button id="resetCal">Reset to auto-estimate</button>
       </div>
+      <p>Know your monitor's spec? Instead of the card, click the <strong>Resolution</strong>
+         or <strong>Display size</strong> shown under the ruler and type your native resolution
+         (e.g. 2560×1440) or diagonal size (e.g. 24 in) — either one calibrates it.</p>
       <details class="help">
         <summary>Why does a ruler need calibrating?</summary>
         <p>A screen only knows its <strong>resolution</strong> (e.g. 1920×1080), not its physical
@@ -217,6 +227,9 @@
 
     let ppi = clampPpi(parseFloat(localStorage.getItem(LS_KEY)) || DEFAULT_PPI);
     let orientation = localStorage.getItem(LS_ORIENT) === "vertical" ? "vertical" : "horizontal";
+    // Native resolution used for spec-calibration (editable); default = detected.
+    let calRes = { w: Math.round(screen.width * (window.devicePixelRatio || 1)),
+                   h: Math.round(screen.height * (window.devicePixelRatio || 1)) };
 
     function clampPpi(v) { return Math.min(360, Math.max(40, v)); }
     function cardPxFromPpi(p) { return p * CARD_IN; }
@@ -239,20 +252,21 @@
       const sw = screen.width, sh = screen.height;
       const vv = window.visualViewport ? window.visualViewport.scale : 1;
 
-      infoRes.innerHTML = `${sw} × ${sh} <span class="hint">logical</span>`
-        + ` · ${Math.round(sw * dpr)} × ${Math.round(sh * dpr)} <span class="hint">native @100% zoom</span>`;
+      infoRes.innerHTML = `${sw} × ${sh} <span class="hint">logical</span> · `
+        + `<span class="hot" title="Click to set your native resolution">${calRes.w} × ${calRes.h}</span>`
+        + ` <span class="hint">native</span>`;
 
       infoZoom.innerHTML = `${dpr.toFixed(2)}× dpr`
         + (vv !== 1 ? ` · pinch ${Math.round(vv * 100)}%` : ``)
         + ` <span class="hint">(browser-zoom × display-scale — not separable)</span>`;
 
       const calibrated = localStorage.getItem(LS_KEY) != null;
-      const wIn = sw / ppi, hIn = sh / ppi;
+      const wIn = (calRes.w / dpr) / ppi, hIn = (calRes.h / dpr) / ppi;
       const diag = Math.hypot(wIn, hIn);
-      infoSize.innerHTML = `≈ ${(wIn * 2.54).toFixed(1)} × ${(hIn * 2.54).toFixed(1)} cm · ${diag.toFixed(1)}″`
-        + (calibrated
-            ? ` <span class="hint">(calibrated)</span>`
-            : ` <span class="hint">— auto-estimate (${Math.round(ppi)} dpi); calibrate for exact distances</span>`);
+      infoSize.innerHTML = `<span class="hot" title="Click to set your screen's diagonal size (inches)">`
+        + `≈ ${(wIn * 2.54).toFixed(1)} × ${(hIn * 2.54).toFixed(1)} cm · ${diag.toFixed(1)}″</span>`
+        + (calibrated ? ` <span class="hint">click to set</span>`
+                      : ` <span class="hint">— auto-estimate; click to set or calibrate</span>`);
     }
 
     // ---- draw the ruler (works along either axis) ----
@@ -350,6 +364,58 @@
       cardVis.style.height = Math.round(px / (85.60 / 53.98)) + "px";
       calVal.textContent = `card ${px}px → ${Math.round(ppiFromCardPx(px))} DPI`;
     }
+
+    // ---- click a readout value to set it (calibrate by monitor spec) ----
+    let editingNow = false;
+    function inlineEdit(hotEl, current, commit) {
+      if (editingNow) return;
+      editingNow = true;
+      const input = document.createElement("input");
+      input.type = "text"; input.className = "editin"; input.value = current;
+      input.size = Math.max(5, current.length + 1);
+      hotEl.replaceChildren(input);
+      input.focus(); input.select();
+      let done = false;
+      const finish = (ok) => {
+        if (done) return; done = true; editingNow = false;
+        if (ok) commit(input.value);
+        draw();                                    // rebuilds the readout
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); finish(true); }
+        else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+      });
+      input.addEventListener("blur", () => finish(true));
+      input.addEventListener("click", (e) => e.stopPropagation());
+    }
+    function cssDiagIn() {   // current physical diagonal in inches, from calRes + ppi
+      const dpr = window.devicePixelRatio || 1;
+      return Math.hypot(calRes.w / dpr, calRes.h / dpr) / ppi;
+    }
+    function editSize(hotEl) {
+      inlineEdit(hotEl, cssDiagIn().toFixed(1), (v) => {
+        const d = parseFloat(v);
+        if (d > 0.3 && d < 400) {
+          const dpr = window.devicePixelRatio || 1;
+          ppi = clampPpi(Math.hypot(calRes.w / dpr, calRes.h / dpr) / d);
+          localStorage.setItem(LS_KEY, String(ppi)); syncCalUI();
+        }
+      });
+    }
+    function editRes(hotEl) {
+      const keepDiag = cssDiagIn();                // preserve the physical size
+      inlineEdit(hotEl, `${calRes.w}x${calRes.h}`, (v) => {
+        const m = /^\s*(\d{2,6})\s*[x×*]\s*(\d{2,6})\s*$/.exec(v);
+        if (m) {
+          calRes = { w: +m[1], h: +m[2] };
+          const dpr = window.devicePixelRatio || 1;
+          ppi = clampPpi(Math.hypot(calRes.w / dpr, calRes.h / dpr) / keepDiag);
+          localStorage.setItem(LS_KEY, String(ppi)); syncCalUI();
+        }
+      });
+    }
+    infoSize.addEventListener("click", (e) => { const h = e.target.closest(".hot"); if (h) editSize(h); });
+    infoRes.addEventListener("click", (e) => { const h = e.target.closest(".hot"); if (h) editRes(h); });
 
     slider.addEventListener("input", () => {
       ppi = clampPpi(ppiFromCardPx(parseFloat(slider.value)));
