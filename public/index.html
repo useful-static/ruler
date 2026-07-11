@@ -126,6 +126,8 @@
     .info .hint { color: var(--muted); }
     .info .hot { cursor: pointer; border-bottom: 1px dashed currentColor; }
     .info .hot:hover { color: var(--accent); }
+    .info .act { cursor: pointer; color: var(--muted); border-bottom: 1px dashed currentColor; white-space: nowrap; }
+    .info .act:hover { color: var(--accent); }
     .info .editin {
       font: inherit; color: var(--fg); background: var(--panel);
       border: 1px solid var(--accent); border-radius: 5px; padding: 0 4px;
@@ -203,7 +205,7 @@
       </div>
       <div class="row">
         <button class="primary" id="saveCal">Save</button>
-        <button id="resetCal">Reset to auto-estimate</button>
+        <button id="resetCal">↺ Reset all to auto-detected</button>
       </div>
       <p>Know your monitor's spec? Instead of the card, click the <strong>Resolution</strong>
          or <strong>Display size</strong> shown under the ruler and type your native resolution
@@ -333,13 +335,15 @@
     //   • CSS in/cm/mm are anchored to 96px = 1in, NOT physical — no help
     //   So physical accuracy REQUIRES the card calibration; the rest is best-effort.
     function updateInfo() {
+      if (editingNow) return;                    // don't rebuild under an open editor
       const dpr = window.devicePixelRatio || 1;
       const sw = screen.width, sh = screen.height;
       const vv = window.visualViewport ? window.visualViewport.scale : 1;
 
       infoRes.innerHTML = `${sw} × ${sh} <span class="hint">logical</span> · `
         + `<span class="hot" title="Click to set your native resolution">${calRes.w} × ${calRes.h}</span>`
-        + ` <span class="hint">native</span>`;
+        + ` <span class="hint">native</span>`
+        + ` · <span class="act" title="Redetect the native resolution from this screen (at 100% zoom)">↺ redetect</span>`;
 
       infoZoom.innerHTML = `${dpr.toFixed(2)}× dpr`
         + (vv !== 1 ? ` · pinch ${Math.round(vv * 100)}%` : ``)
@@ -350,8 +354,9 @@
       const diag = Math.hypot(wIn, hIn);
       infoSize.innerHTML = `<span class="hot" title="Click to set your screen's diagonal size (inches)">`
         + `≈ ${(wIn * 2.54).toFixed(1)} × ${(hIn * 2.54).toFixed(1)} cm · ${diag.toFixed(1)}″</span>`
-        + (calibrated ? ` <span class="hint">click to set</span>`
-                      : ` <span class="hint">— auto-estimate; click to set or calibrate</span>`);
+        + (calibrated ? ` <span class="hint">calibrated · click to set</span>`
+                      : ` <span class="hint">auto-estimate · click to set or calibrate</span>`)
+        + ` · <span class="act" title="Discard the calibration and go back to the device-class auto-estimate">↺ reset</span>`;
     }
 
     // ---- draw the ruler (works along either axis) ----
@@ -581,8 +586,26 @@
         }
       });
     }
-    infoSize.addEventListener("click", (e) => { const h = e.target.closest(".hot"); if (h) editSize(h); });
-    infoRes.addEventListener("click", (e) => { const h = e.target.closest(".hot"); if (h) editRes(h); });
+    // ---- resets: every auto-detected value has a labelled ↺ clickable ----
+    function resetResolution() {                 // redetect native res (assumes 100% zoom)
+      const d = Math.max(1, dprNow());           // OS scale is never below 1
+      calRes = { w: Math.round(screen.width * d), h: Math.round(screen.height * d) };
+      saveCalRes(); syncCalUI(); draw();
+    }
+    function resetCalibration() {                // back to the device-class estimate
+      devPpi = DEFAULT_PPI * Math.max(1, dprNow());
+      localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_KEY_OLD);
+      localStorage.setItem(LS_EST, String(devPpi));   // keep reloads consistent
+      refreshPpi(); syncCalUI(); draw();
+    }
+    infoSize.addEventListener("click", (e) => {
+      if (e.target.closest(".act")) { resetCalibration(); return; }
+      const h = e.target.closest(".hot"); if (h) editSize(h);
+    });
+    infoRes.addEventListener("click", (e) => {
+      if (e.target.closest(".act")) { resetResolution(); return; }
+      const h = e.target.closest(".hot"); if (h) editRes(h);
+    });
 
     slider.addEventListener("input", () => {
       devPpi = ppiFromCardPx(parseFloat(slider.value));   // slider is in device px
@@ -594,13 +617,9 @@
       draw();
       setTimeout(() => (saveBtn.textContent = "Save"), 1200);
     });
-    resetBtn.addEventListener("click", () => {
-      devPpi = DEFAULT_PPI * dprNow();          // re-estimate; assumes 100% zoom now
-      localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_KEY_OLD);
-      localStorage.setItem(LS_EST, String(devPpi));   // keep reloads consistent
-      calRes = { w: Math.round(screen.width * dprNow()), h: Math.round(screen.height * dprNow()) };
-      saveCalRes();
-      refreshPpi(); syncCalUI(); draw();
+    resetBtn.addEventListener("click", () => {   // full reset: calibration + resolution
+      resetCalibration();
+      resetResolution();
     });
     toggle.addEventListener("click", () => {
       panel.hidden = !panel.hidden;
