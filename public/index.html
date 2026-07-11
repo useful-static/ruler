@@ -406,8 +406,9 @@
       ctx.fillStyle = ink;
       if (horizontal) {
         ctx.textBaseline = "middle";
-        ctx.textAlign = "left";  ctx.fillText("cm", 4, 66);
-        ctx.textAlign = "right"; ctx.fillText("in", cssW - 4, cssH - 66);
+        // sit on the same line as the numbers (tick length 34 + 8 offset)
+        ctx.textAlign = "left";  ctx.fillText("cm", 4, 42);
+        ctx.textAlign = "right"; ctx.fillText("in", cssW - 4, cssH - 42);
       } else {
         ctx.textBaseline = "top";
         ctx.textAlign = "right"; ctx.fillText("cm", depth / 2 - 6, 10);
