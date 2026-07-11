@@ -167,7 +167,7 @@
       </div>
       <div class="row">
         <button class="primary" id="saveCal">Save</button>
-        <button id="resetCal">Reset to default (96 DPI)</button>
+        <button id="resetCal">Reset to auto-estimate</button>
       </div>
       <details class="help">
         <summary>Why does a ruler need calibrating?</summary>
@@ -184,8 +184,19 @@
     "use strict";
     const CARD_MM = 85.60;                 // ISO 7810 ID-1 long edge
     const CARD_IN = CARD_MM / 25.4;        // 3.370 in
-    const DEFAULT_PPI = 96;                // CSS reference: 96px = 1in
     const LS_KEY = "ruler.ppi.v1";
+    // Best default WITHOUT calibration, from each platform's own density baseline:
+    // desktop CSS px ≈ 1/96 in, but touch platforms define CSS px as a dp/point
+    // ≈ 1/160 in (phones) / ~1/132 in (tablets). Physical size still isn't
+    // detectable, so this is a device-class ESTIMATE — calibration stays exact.
+    function autoDefaultPpi() {
+      const desktop = window.matchMedia
+        && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+      if (desktop) return 96;                                  // desktop / laptop
+      const minSide = Math.min(screen.width || 9999, screen.height || 9999);
+      return minSide > 550 ? 132 : 160;                        // tablet : phone
+    }
+    const DEFAULT_PPI = autoDefaultPpi();
     const LS_ORIENT = "ruler.orient.v1";
 
     const canvas   = document.getElementById("ruler");
@@ -241,7 +252,7 @@
       infoSize.innerHTML = `≈ ${(wIn * 2.54).toFixed(1)} × ${(hIn * 2.54).toFixed(1)} cm · ${diag.toFixed(1)}″`
         + (calibrated
             ? ` <span class="hint">(calibrated)</span>`
-            : ` <span class="hint">— 96-dpi guess; calibrate to fix distances</span>`);
+            : ` <span class="hint">— auto-estimate (${Math.round(ppi)} dpi); calibrate for exact distances</span>`);
     }
 
     // ---- draw the ruler (works along either axis) ----
