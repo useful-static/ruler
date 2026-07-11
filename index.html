@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ruler — on-screen ruler in cm &amp; inches</title>
+  <meta name="description" content="A free on-screen ruler in centimeters and inches. Calibrate once against a credit card for a physically accurate measurement on any display.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%8F%3C/text%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #0f1115;
+      --fg: #e7e9ee;
+      --muted: #9aa2b1;
+      --panel: #191c23;
+      --border: #2a2f3a;
+      --accent: #e5484d;
+      --ruler-face: #f6efd8;
+      --ruler-ink: #23262e;
+      --ruler-edge: #d8cfa8;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f5f7;
+        --fg: #1a1d24;
+        --muted: #5b616e;
+        --panel: #ffffff;
+        --border: #e2e5ea;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-text-size-adjust: 100%;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    header {
+      display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+      padding: 16px clamp(12px, 4vw, 28px) 10px;
+    }
+    header h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+    header .ppi { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+    header .spacer { flex: 1 1 auto; }
+    button {
+      font: inherit; color: var(--fg); background: var(--panel);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 7px 12px; cursor: pointer; line-height: 1;
+    }
+    button:hover { border-color: var(--muted); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ---- the ruler ---- */
+    .ruler-wrap {
+      background: var(--ruler-face);
+      border-top: 1px solid var(--ruler-edge);
+      border-bottom: 1px solid var(--ruler-edge);
+      box-shadow: inset 0 8px 14px -12px rgba(0,0,0,.35), inset 0 -8px 14px -12px rgba(0,0,0,.35);
+      overflow: hidden;
+    }
+    canvas#ruler { display: block; width: 100%; height: 160px; touch-action: manipulation; }
+    .ruler-wrap.vertical {
+      background: transparent; border: none; box-shadow: none;
+      display: flex; justify-content: center; padding: 10px 0 24px;
+    }
+    .ruler-wrap.vertical canvas#ruler {
+      width: 220px; height: 78vh;
+      background: var(--ruler-face);
+      border-left: 1px solid var(--ruler-edge);
+      border-right: 1px solid var(--ruler-edge);
+      box-shadow: inset 8px 0 14px -12px rgba(0,0,0,.35), inset -8px 0 14px -12px rgba(0,0,0,.35);
+    }
+
+    /* ---- calibration panel ---- */
+    .panel {
+      max-width: 720px; margin: 18px auto; padding: 0 clamp(12px, 4vw, 28px);
+    }
+    .card-box {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 18px;
+    }
+    .card-box h2 { margin: 0 0 6px; font-size: 15px; }
+    .card-box p { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; }
+    .cardvis {
+      display: flex; justify-content: center; padding: 14px 0 6px;
+      overflow-x: auto;
+    }
+    .credit-card {
+      position: relative; flex: 0 0 auto;
+      border-radius: 10px; color: #fff;
+      background: linear-gradient(135deg, #3b5bdb, #7048e8 55%, #9c36b5);
+      box-shadow: 0 6px 18px -8px rgba(0,0,0,.5);
+      display: flex; align-items: flex-end;
+    }
+    .credit-card::before {
+      content: ""; position: absolute; left: 9%; top: 26%;
+      width: 15%; height: 20%; border-radius: 4px;
+      background: linear-gradient(135deg, #f5d97b, #c9a227);
+    }
+    .credit-card span {
+      font-size: 11px; letter-spacing: 2px; opacity: .85;
+      padding: 10px 12px; font-variant-numeric: tabular-nums;
+    }
+    .controls { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+    .controls input[type=range] { flex: 1 1 220px; accent-color: var(--accent); }
+    .controls .val { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    details.help { margin-top: 14px; color: var(--muted); font-size: 13px; }
+    details.help summary { cursor: pointer; color: var(--fg); }
+    details.help p { color: var(--muted); margin: 8px 0 0; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📏 Ruler</h1>
+    <span class="ppi" id="ppiReadout"></span>
+    <span class="spacer"></span>
+    <button id="toggleOrient">Vertical</button>
+    <button id="toggleCal">Calibrate</button>
+  </header>
+
+  <div class="ruler-wrap">
+    <canvas id="ruler"></canvas>
+  </div>
+
+  <section class="panel" id="calPanel" hidden>
+    <div class="card-box">
+      <h2>Calibrate to your screen</h2>
+      <p>Hold a standard bank/ID card flat against the screen and drag the slider until
+         the on-screen card is <em>exactly</em> the same width. That teaches the ruler your
+         display's true size. It's saved on this device.</p>
+      <div class="cardvis">
+        <div class="credit-card" id="cardVis"><span>85.6 × 53.98 mm</span></div>
+      </div>
+      <div class="controls">
+        <input type="range" id="calSlider" min="150" max="1400" step="1">
+        <span class="val" id="calVal"></span>
+      </div>
+      <div class="row">
+        <button class="primary" id="saveCal">Save</button>
+        <button id="resetCal">Reset to default (96 DPI)</button>
+      </div>
+      <details class="help">
+        <summary>Why does a ruler need calibrating?</summary>
+        <p>A screen only knows its <strong>resolution</strong> (e.g. 1920×1080), not its physical
+           size — a 24″ monitor and a 6″ phone can share the same resolution. Browsers assume a
+           fixed 96 pixels per inch, which is only right for some displays. Matching a card whose
+           size is standardized worldwide (ISO&nbsp;7810 ID-1) pins the ruler to real millimetres.</p>
+      </details>
+    </div>
+  </section>
+
+  <script>
+  (() => {
+    "use strict";
+    const CARD_MM = 85.60;                 // ISO 7810 ID-1 long edge
+    const CARD_IN = CARD_MM / 25.4;        // 3.370 in
+    const DEFAULT_PPI = 96;                // CSS reference: 96px = 1in
+    const LS_KEY = "ruler.ppi.v1";
+    const LS_ORIENT = "ruler.orient.v1";
+
+    const canvas   = document.getElementById("ruler");
+    const ctx      = canvas.getContext("2d");
+    const wrap     = document.querySelector(".ruler-wrap");
+    const ppiOut   = document.getElementById("ppiReadout");
+    const panel    = document.getElementById("calPanel");
+    const toggle   = document.getElementById("toggleCal");
+    const orientBtn = document.getElementById("toggleOrient");
+    const slider   = document.getElementById("calSlider");
+    const calVal   = document.getElementById("calVal");
+    const cardVis  = document.getElementById("cardVis");
+    const saveBtn  = document.getElementById("saveCal");
+    const resetBtn = document.getElementById("resetCal");
+
+    let ppi = clampPpi(parseFloat(localStorage.getItem(LS_KEY)) || DEFAULT_PPI);
+    let orientation = localStorage.getItem(LS_ORIENT) === "vertical" ? "vertical" : "horizontal";
+
+    function clampPpi(v) { return Math.min(360, Math.max(40, v)); }
+    function cardPxFromPpi(p) { return p * CARD_IN; }
+    function ppiFromCardPx(px) { return px / CARD_IN; }
+
+    // ---- draw the ruler (works along either axis) ----
+    function draw() {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const cssW = canvas.clientWidth;
+      const cssH = canvas.clientHeight;
+      canvas.width  = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssW, cssH);
+
+      const horizontal = orientation === "horizontal";
+      const along = horizontal ? cssW : cssH;   // ruler length
+      const depth = horizontal ? cssH : cssW;   // ruler thickness
+      const pos = horizontal ? (m, c) => [m, c] : (m, c) => [c, m];
+
+      const css = getComputedStyle(document.documentElement);
+      const ink = css.getPropertyValue("--ruler-ink").trim() || "#23262e";
+      const accent = css.getPropertyValue("--accent").trim() || "#e5484d";
+      ctx.font = "12px system-ui, sans-serif";
+
+      // a tick at main-position m, spanning the cross axis from c0..c1
+      const tick = (m, c0, c1, w, color) => {
+        ctx.strokeStyle = color; ctx.lineWidth = w;
+        let [x0, y0] = pos(m, c0);
+        let [x1, y1] = pos(m, c1);
+        if (horizontal) { x0 = Math.round(x0) + (w % 2 ? 0.5 : 0); x1 = x0; }
+        else            { y0 = Math.round(y0) + (w % 2 ? 0.5 : 0); y1 = y0; }
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      };
+
+      // ---- centimetres — ticks from the near edge (top / left) ----
+      const pxPerMm = ppi / 25.4;
+      ctx.textBaseline = "middle";
+      for (let mm = 0; mm * pxPerMm <= along + 0.5; mm++) {
+        const m = mm * pxPerMm;
+        const len = mm % 10 === 0 ? 34 : mm % 5 === 0 ? 22 : 12;
+        tick(m, 0, len, 1, ink);
+        if (mm % 10 === 0 && m + 2 < along) {
+          ctx.fillStyle = accent;
+          ctx.textAlign = "left";
+          const [lx, ly] = horizontal ? [m + 3, len + 8] : [len + 6, m];
+          ctx.fillText(String(mm / 10), lx, ly);
+        }
+      }
+
+      // ---- inches — ticks from the far edge (bottom / right), 1/16" ----
+      const pxPer16 = ppi / 16;
+      ctx.fillStyle = ink;
+      for (let s = 0; s * pxPer16 <= along + 0.5; s++) {
+        const m = s * pxPer16;
+        const len = s % 16 === 0 ? 34 : s % 8 === 0 ? 24 : s % 4 === 0 ? 18 : s % 2 === 0 ? 12 : 7;
+        tick(m, depth - len, depth, 1, ink);
+        if (s % 16 === 0 && m + 2 < along) {
+          if (horizontal) { ctx.textAlign = "left";  ctx.fillText(String(s / 16), m + 3, depth - len - 8); }
+          else            { ctx.textAlign = "right"; ctx.fillText(String(s / 16), depth - len - 6, m); }
+        }
+      }
+
+      // ---- unit labels ----
+      ctx.fillStyle = ink;
+      if (horizontal) {
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "left";  ctx.fillText("cm", 4, 66);
+        ctx.textAlign = "right"; ctx.fillText("in", cssW - 4, cssH - 66);
+      } else {
+        ctx.textBaseline = "top";
+        ctx.textAlign = "right"; ctx.fillText("cm", depth / 2 - 6, 10);
+        ctx.textAlign = "left";  ctx.fillText("in", depth / 2 + 6, 10);
+      }
+
+      ppiOut.textContent = `${Math.round(ppi)} px/in · ${pxPerMm.toFixed(2)} px/mm`;
+    }
+
+    function applyOrientation() {
+      const vertical = orientation === "vertical";
+      wrap.classList.toggle("vertical", vertical);
+      orientBtn.textContent = vertical ? "Horizontal" : "Vertical";
+    }
+
+    // ---- calibration UI ----
+    function syncCalUI() {
+      const px = Math.round(cardPxFromPpi(ppi));
+      slider.value = String(px);
+      cardVis.style.width = px + "px";
+      cardVis.style.height = Math.round(px / (85.60 / 53.98)) + "px";
+      calVal.textContent = `card ${px}px → ${Math.round(ppiFromCardPx(px))} DPI`;
+    }
+
+    slider.addEventListener("input", () => {
+      ppi = clampPpi(ppiFromCardPx(parseFloat(slider.value)));
+      syncCalUI();
+      draw();
+    });
+    saveBtn.addEventListener("click", () => {
+      localStorage.setItem(LS_KEY, String(ppi));
+      saveBtn.textContent = "Saved ✓";
+      setTimeout(() => (saveBtn.textContent = "Save"), 1200);
+    });
+    resetBtn.addEventListener("click", () => {
+      ppi = DEFAULT_PPI;
+      localStorage.removeItem(LS_KEY);
+      syncCalUI(); draw();
+    });
+    toggle.addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) { syncCalUI(); panel.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+    });
+    orientBtn.addEventListener("click", () => {
+      orientation = orientation === "horizontal" ? "vertical" : "horizontal";
+      localStorage.setItem(LS_ORIENT, orientation);
+      applyOrientation();
+      draw();
+    });
+
+    // ---- lifecycle ----
+    let raf = 0;
+    const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); };
+    window.addEventListener("resize", redraw);
+    if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", redraw);
+
+    applyOrientation();
+    syncCalUI();
+    draw();
+  })();
+  </script>
+</body>
+</html>
