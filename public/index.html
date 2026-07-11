@@ -212,28 +212,36 @@
     function ppiFromCardPx(px) { return px / CARD_IN; }
 
     // ---- detected-display readout ----
+    // ── What a browser can actually report, most → least reliable (verified
+    //    2026-07 against MDN + the web platform):
+    //   • Logical resolution   screen.width × height (CSS px) ....... always exact
+    //   • Native resolution     × devicePixelRatio .......... exact @100% page zoom
+    //   • devicePixelRatio      = browser-zoom × OS-display-scale, and NO API can
+    //                             split the two (MDN); on a 1× monitor dpr IS zoom
+    //   • Pinch zoom            visualViewport.scale ......... exact (touch only)
+    //   • PHYSICAL size / DPI    ...... NOT exposed by ANY API (privacy) → calibrate
+    //   • WebGL/WebGPU expose GPU vendor/renderer, NOT display geometry — no help
+    //   • CSS in/cm/mm are anchored to 96px = 1in, NOT physical — no help
+    //   So physical accuracy REQUIRES the card calibration; the rest is best-effort.
     function updateInfo() {
       const dpr = window.devicePixelRatio || 1;
       const sw = screen.width, sh = screen.height;
+      const vv = window.visualViewport ? window.visualViewport.scale : 1;
 
-      // The browser only exposes the LOGICAL (CSS-pixel) screen size. Native
-      // panel px would be sw*dpr, but ONLY at 100% browser zoom (zoom inflates
-      // dpr), so we show the reliable logical value, not a guessed native one.
-      infoRes.textContent = `${sw} × ${sh} CSS px`;
+      infoRes.innerHTML = `${sw} × ${sh} <span class="hint">logical</span>`
+        + ` · ${Math.round(sw * dpr)} × ${Math.round(sh * dpr)} <span class="hint">native @100% zoom</span>`;
 
-      // No browser API exposes zoom: page zoom and OS display-scaling are fused
-      // into devicePixelRatio and can't be separated. Report the composite only.
-      infoZoom.innerHTML = `${dpr.toFixed(2)}× <span class="hint">(zoom × display-scale — browsers don't separate them)</span>`;
+      infoZoom.innerHTML = `${dpr.toFixed(2)}× dpr`
+        + (vv !== 1 ? ` · pinch ${Math.round(vv * 100)}%` : ``)
+        + ` <span class="hint">(browser-zoom × display-scale — not separable)</span>`;
 
-      // Physical size is NOT detectable; it is resolution ÷ the calibrated PPI,
-      // so it is only correct once you calibrate.
       const calibrated = localStorage.getItem(LS_KEY) != null;
       const wIn = sw / ppi, hIn = sh / ppi;
       const diag = Math.hypot(wIn, hIn);
       infoSize.innerHTML = `≈ ${(wIn * 2.54).toFixed(1)} × ${(hIn * 2.54).toFixed(1)} cm · ${diag.toFixed(1)}″`
         + (calibrated
             ? ` <span class="hint">(calibrated)</span>`
-            : ` <span class="hint">— uncalibrated: a 96-dpi guess, calibrate to fix distances too</span>`);
+            : ` <span class="hint">— 96-dpi guess; calibrate to fix distances</span>`);
     }
 
     // ---- draw the ruler (works along either axis) ----
