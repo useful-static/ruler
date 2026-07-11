@@ -34,6 +34,8 @@
       color: var(--fg);
       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       -webkit-text-size-adjust: 100%;
+      min-height: 100dvh;
+      display: flex; flex-direction: column;
       padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     }
     header {
@@ -51,41 +53,59 @@
     button:hover { border-color: var(--muted); }
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+    /* ---- stage: vertically centers the ruler on the screen ---- */
+    .stage {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      padding: 12px 0;
+    }
+
     /* ---- the ruler ---- */
     .ruler-wrap {
+      width: 100%;
       background: var(--ruler-face);
       border-top: 1px solid var(--ruler-edge);
       border-bottom: 1px solid var(--ruler-edge);
       box-shadow: inset 0 8px 14px -12px rgba(0,0,0,.35), inset 0 -8px 14px -12px rgba(0,0,0,.35);
       overflow: hidden;
     }
-    canvas#ruler { display: block; width: 100%; height: 160px; touch-action: manipulation; }
+    canvas#ruler { display: block; width: 100%; height: 160px; touch-action: manipulation; cursor: pointer; }
     .ruler-wrap.vertical {
+      width: auto;
       background: transparent; border: none; box-shadow: none;
-      display: flex; justify-content: center; padding: 10px 0 24px;
     }
     .ruler-wrap.vertical canvas#ruler {
-      width: 220px; height: 78vh;
+      width: 220px; height: 72vh;
       background: var(--ruler-face);
       border-left: 1px solid var(--ruler-edge);
       border-right: 1px solid var(--ruler-edge);
       box-shadow: inset 8px 0 14px -12px rgba(0,0,0,.35), inset -8px 0 14px -12px rgba(0,0,0,.35);
     }
 
-    /* ---- calibration panel ---- */
-    .panel {
-      max-width: 720px; margin: 18px auto; padding: 0 clamp(12px, 4vw, 28px);
+    /* ---- detected-display info readout ---- */
+    .info {
+      display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 6px clamp(16px, 4vw, 36px);
+      padding: 0 12px; font-size: 13px;
     }
+    .info > div { white-space: nowrap; }
+    .info .k {
+      color: var(--muted); text-transform: uppercase;
+      letter-spacing: .5px; font-size: 10.5px; margin-right: 7px;
+    }
+    .info .v { color: var(--fg); font-variant-numeric: tabular-nums; }
+    .info .hint { color: var(--muted); }
+
+    /* ---- calibration panel ---- */
+    .panel { max-width: 720px; margin: 0 auto 20px; padding: 0 clamp(12px, 4vw, 28px); width: 100%; }
     .card-box {
       background: var(--panel); border: 1px solid var(--border);
       border-radius: 12px; padding: 18px;
     }
     .card-box h2 { margin: 0 0 6px; font-size: 15px; }
     .card-box p { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; }
-    .cardvis {
-      display: flex; justify-content: center; padding: 14px 0 6px;
-      overflow-x: auto;
-    }
+    .cardvis { display: flex; justify-content: center; padding: 14px 0 6px; overflow-x: auto; }
     .credit-card {
       position: relative; flex: 0 0 auto;
       border-radius: 10px; color: #fff;
@@ -121,9 +141,16 @@
     <button id="toggleCal">Calibrate</button>
   </header>
 
-  <div class="ruler-wrap">
-    <canvas id="ruler"></canvas>
-  </div>
+  <main class="stage">
+    <div class="ruler-wrap" id="rulerWrap" title="Click the ruler to rotate">
+      <canvas id="ruler"></canvas>
+    </div>
+    <section class="info" aria-label="Detected display">
+      <div><span class="k">Resolution</span><span class="v" id="infoRes">—</span></div>
+      <div><span class="k">Zoom</span><span class="v" id="infoZoom">—</span></div>
+      <div><span class="k">Display size</span><span class="v" id="infoSize">—</span></div>
+    </section>
+  </main>
 
   <section class="panel" id="calPanel" hidden>
     <div class="card-box">
@@ -160,10 +187,11 @@
     const DEFAULT_PPI = 96;                // CSS reference: 96px = 1in
     const LS_KEY = "ruler.ppi.v1";
     const LS_ORIENT = "ruler.orient.v1";
+    const BASE_DPR = window.devicePixelRatio || 1;  // dpr at first paint (zoom baseline)
 
     const canvas   = document.getElementById("ruler");
     const ctx      = canvas.getContext("2d");
-    const wrap     = document.querySelector(".ruler-wrap");
+    const wrap     = document.getElementById("rulerWrap");
     const ppiOut   = document.getElementById("ppiReadout");
     const panel    = document.getElementById("calPanel");
     const toggle   = document.getElementById("toggleCal");
@@ -173,6 +201,9 @@
     const cardVis  = document.getElementById("cardVis");
     const saveBtn  = document.getElementById("saveCal");
     const resetBtn = document.getElementById("resetCal");
+    const infoRes  = document.getElementById("infoRes");
+    const infoZoom = document.getElementById("infoZoom");
+    const infoSize = document.getElementById("infoSize");
 
     let ppi = clampPpi(parseFloat(localStorage.getItem(LS_KEY)) || DEFAULT_PPI);
     let orientation = localStorage.getItem(LS_ORIENT) === "vertical" ? "vertical" : "horizontal";
@@ -180,6 +211,27 @@
     function clampPpi(v) { return Math.min(360, Math.max(40, v)); }
     function cardPxFromPpi(p) { return p * CARD_IN; }
     function ppiFromCardPx(px) { return px / CARD_IN; }
+
+    // ---- detected-display readout ----
+    function updateInfo() {
+      const dpr = window.devicePixelRatio || 1;
+      const sw = screen.width, sh = screen.height;
+      infoRes.textContent = `${sw} × ${sh} CSS px`
+        + (dpr !== 1 ? ` · ${Math.round(sw * dpr)} × ${Math.round(sh * dpr)} device px` : "");
+
+      // Browser gives no true zoom API: estimate from dpr vs first-paint dpr
+      // (desktop browser zoom) times visualViewport.scale (touch pinch-zoom).
+      const vv = window.visualViewport ? window.visualViewport.scale : 1;
+      const zoom = Math.round((dpr / BASE_DPR) * vv * 100);
+      infoZoom.textContent = `≈ ${zoom}%  ·  ${dpr.toFixed(2)}× device-pixel-ratio`;
+
+      // Physical size can only be derived from resolution ÷ calibrated PPI.
+      const calibrated = localStorage.getItem(LS_KEY) != null;
+      const wIn = sw / ppi, hIn = sh / ppi;
+      const diag = Math.hypot(wIn, hIn);
+      infoSize.innerHTML = `≈ ${(wIn * 2.54).toFixed(1)} × ${(hIn * 2.54).toFixed(1)} cm · ${diag.toFixed(1)}″ diagonal`
+        + (calibrated ? "" : ` <span class="hint">(assumes 96 dpi — calibrate for accuracy)</span>`);
+    }
 
     // ---- draw the ruler (works along either axis) ----
     function draw() {
@@ -252,12 +304,20 @@
       }
 
       ppiOut.textContent = `${Math.round(ppi)} px/in · ${pxPerMm.toFixed(2)} px/mm`;
+      updateInfo();
     }
 
     function applyOrientation() {
       const vertical = orientation === "vertical";
       wrap.classList.toggle("vertical", vertical);
       orientBtn.textContent = vertical ? "Horizontal" : "Vertical";
+    }
+
+    function toggleOrientation() {
+      orientation = orientation === "horizontal" ? "vertical" : "horizontal";
+      localStorage.setItem(LS_ORIENT, orientation);
+      applyOrientation();
+      draw();
     }
 
     // ---- calibration UI ----
@@ -277,6 +337,7 @@
     saveBtn.addEventListener("click", () => {
       localStorage.setItem(LS_KEY, String(ppi));
       saveBtn.textContent = "Saved ✓";
+      draw();
       setTimeout(() => (saveBtn.textContent = "Save"), 1200);
     });
     resetBtn.addEventListener("click", () => {
@@ -288,17 +349,14 @@
       panel.hidden = !panel.hidden;
       if (!panel.hidden) { syncCalUI(); panel.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
     });
-    orientBtn.addEventListener("click", () => {
-      orientation = orientation === "horizontal" ? "vertical" : "horizontal";
-      localStorage.setItem(LS_ORIENT, orientation);
-      applyOrientation();
-      draw();
-    });
+    orientBtn.addEventListener("click", toggleOrientation);
+    canvas.addEventListener("click", toggleOrientation);   // click the ruler to rotate
 
     // ---- lifecycle ----
     let raf = 0;
     const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); };
     window.addEventListener("resize", redraw);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", redraw);
     if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", redraw);
 
     applyOrientation();
