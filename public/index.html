@@ -224,6 +224,7 @@
     const CARD_MM = 85.60;                 // ISO 7810 ID-1 long edge
     const CARD_IN = CARD_MM / 25.4;        // 3.370 in
     const END = 24;                        // px run-out past the first/last mark (rounded ends)
+    const LOAD_DPR = window.devicePixelRatio || 1;   // chrome-scale baseline (zoom-invariant ruler)
     const LS_KEY = "ruler.devppi.v1";     // stored calibration: DEVICE px per inch (zoom-invariant)
     const LS_KEY_OLD = "ruler.ppi.v1";    // legacy: CSS px per inch (migrated on load)
     // Best default WITHOUT calibration, from each platform's own density baseline:
@@ -313,7 +314,14 @@
     // ---- draw the ruler (works along either axis) ----
     function draw() {
       refreshPpi();                              // track browser-zoom (dpr) changes
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const dprReal = window.devicePixelRatio || 1;
+      const k = LOAD_DPR / dprReal;              // counter-scale chrome so zoom can't fatten the ruler
+      const horizontal = orientation === "horizontal";
+      // keep the band's PHYSICAL thickness constant across zoom (length stays 90%/90dvh)
+      if (horizontal) { canvas.style.height = Math.round(160 * k) + "px"; canvas.style.width = ""; }
+      else            { canvas.style.width = Math.round(220 * k) + "px"; canvas.style.height = ""; }
+
+      const dpr = Math.max(1, dprReal);
       const cssW = canvas.clientWidth;
       const cssH = canvas.clientHeight;
       canvas.width  = Math.round(cssW * dpr);
@@ -321,7 +329,6 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
 
-      const horizontal = orientation === "horizontal";
       const along = horizontal ? cssW : cssH;   // ruler length
       const depth = horizontal ? cssH : cssW;   // ruler thickness
       const pos = horizontal ? (m, c) => [m, c] : (m, c) => [c, m];
@@ -329,7 +336,7 @@
       const css = getComputedStyle(document.documentElement);
       const ink = css.getPropertyValue("--ruler-ink").trim() || "#23262e";
       const accent = css.getPropertyValue("--accent").trim() || "#e5484d";
-      ctx.font = "12px system-ui, sans-serif";
+      ctx.font = (12 * k).toFixed(1) + "px system-ui, sans-serif";
 
       // a tick at main-position m, spanning the cross axis from c0..c1
       const tick = (m, c0, c1, w, color) => {
@@ -343,16 +350,17 @@
 
       // ---- centimetres — ticks from the near edge (top / left) ----
       const pxPerMm = ppi / 25.4;
-      const span = along - 2 * END;              // measuring length; ticks run END..along-END
+      const end = END * k;
+      const span = along - 2 * end;              // measuring length; ticks run end..along-end
       ctx.textBaseline = "middle";
       for (let mm = 0; mm * pxPerMm <= span + 0.5; mm++) {
-        const m = END + mm * pxPerMm;
-        const len = mm % 10 === 0 ? 34 : mm % 5 === 0 ? 22 : 12;
+        const m = end + mm * pxPerMm;
+        const len = (mm % 10 === 0 ? 34 : mm % 5 === 0 ? 22 : 12) * k;
         tick(m, 0, len, 1, ink);
-        if (mm % 10 === 0 && m + 2 < along - END) {
+        if (mm % 10 === 0 && m + 2 < along - end) {
           ctx.fillStyle = accent;
           ctx.textAlign = "left";
-          const [lx, ly] = horizontal ? [m + 3, len + 8] : [len + 6, m];
+          const [lx, ly] = horizontal ? [m + 3 * k, len + 8 * k] : [len + 6 * k, m];
           ctx.fillText(String(mm / 10), lx, ly);
         }
       }
@@ -361,12 +369,12 @@
       const pxPer16 = ppi / 16;
       ctx.fillStyle = ink;
       for (let s = 0; s * pxPer16 <= span + 0.5; s++) {
-        const m = END + s * pxPer16;
-        const len = s % 16 === 0 ? 34 : s % 8 === 0 ? 24 : s % 4 === 0 ? 18 : s % 2 === 0 ? 12 : 7;
+        const m = end + s * pxPer16;
+        const len = (s % 16 === 0 ? 34 : s % 8 === 0 ? 24 : s % 4 === 0 ? 18 : s % 2 === 0 ? 12 : 7) * k;
         tick(m, depth - len, depth, 1, ink);
-        if (s % 16 === 0 && m + 2 < along - END) {
-          if (horizontal) { ctx.textAlign = "left";  ctx.fillText(String(s / 16), m + 3, depth - len - 8); }
-          else            { ctx.textAlign = "right"; ctx.fillText(String(s / 16), depth - len - 6, m); }
+        if (s % 16 === 0 && m + 2 < along - end) {
+          if (horizontal) { ctx.textAlign = "left";  ctx.fillText(String(s / 16), m + 3 * k, depth - len - 8 * k); }
+          else            { ctx.textAlign = "right"; ctx.fillText(String(s / 16), depth - len - 6 * k, m); }
         }
       }
 
@@ -374,12 +382,12 @@
       ctx.fillStyle = ink;
       if (horizontal) {
         ctx.textBaseline = "middle";
-        ctx.textAlign = "left";  ctx.fillText("cm", 4, 66);
-        ctx.textAlign = "right"; ctx.fillText("in", cssW - 4, cssH - 66);
+        ctx.textAlign = "left";  ctx.fillText("cm", 4 * k, 66 * k);
+        ctx.textAlign = "right"; ctx.fillText("in", cssW - 4 * k, cssH - 66 * k);
       } else {
         ctx.textBaseline = "top";
-        ctx.textAlign = "right"; ctx.fillText("cm", depth / 2 - 6, 10);
-        ctx.textAlign = "left";  ctx.fillText("in", depth / 2 + 6, 10);
+        ctx.textAlign = "right"; ctx.fillText("cm", depth / 2 - 6 * k, 10 * k);
+        ctx.textAlign = "left";  ctx.fillText("in", depth / 2 + 6 * k, 10 * k);
       }
 
       ppiOut.textContent = `${Math.round(ppi)} px/in · ${pxPerMm.toFixed(2)} px/mm`;
