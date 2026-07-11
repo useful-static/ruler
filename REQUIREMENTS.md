@@ -56,21 +56,31 @@ serving a physically-accurate on-screen ruler at **ruler.free** and
   re-render on every zoom change (resize + a re-arming `resolution`
   media-query watcher; dpr is read inside rAF because resize can dispatch
   before it settles).
-- **R8c — Reloading while zoomed looks identical.** The first auto-estimate
-  is persisted (`ruler.devppi.est.v1`), so a refresh at any remembered
-  per-site zoom renders exactly like zooming after load. Reset re-estimates
-  at the current zoom (assumes 100 %).
+- **R8c — Loading at any zoom yields the same physical ruler.** The zoom
+  factor is estimated from `outerWidth / innerWidth` (Chrome keeps
+  `outerWidth` in OS-scale px), snapped to the browser's discrete zoom
+  levels, so the auto-estimates (`DEFAULT × OS-scale`, `screen × OS-scale`)
+  are zoom-independent on every load. When the ratio is unrecognizable
+  (e.g. devtools docked aside) the persisted last-known-good estimate is
+  used, bounded by the OS-scale-≥1 backstop. The ZOOM readout shows the
+  recovered split (`≈ N % zoom × M× display-scale`) when known.
+- **R8d — Storage is schema-versioned.** All persisted state lives under
+  `ruler.*` keys stamped with `ruler.schema`; a schema bump wipes older
+  keys once on the next visit, so browsers carrying stale data from
+  previous versions self-clean. Stored calibrations are additionally
+  sanity-checked at load (impossible values are discarded).
 - **R9 — Adaptive label decimation.** When marks crowd (zoomed out, small
   ruler, low ppi), number labels thin to a logical step — cm from
   {1, 2, 5, 10, 20, 50, …}, inches from {1, 2, 3, 6, 12, 24, …} — chosen as
   the smallest step whose mark spacing fits the widest label plus a gap.
   Each scale decimates independently; ticks are never removed.
-- **Known limitation — first visit while zoomed.** On the *first-ever*
-  visit with no saved calibration or estimate, the auto-estimate can't
-  separate browser-zoom from OS-scaling inside `devicePixelRatio`, so a
-  first load at e.g. 500 % zoom misestimates until Reset (at 100 %) or a
-  real calibration. All later reloads are consistent (R8c); saved
-  calibrations are immune.
+- **Known limitation — unreadable zoom factor.** When the
+  `outerWidth/innerWidth` ratio doesn't snap to a standard zoom level
+  (devtools docked to a side, exotic window chrome, browsers where
+  `outerWidth` zooms too), the estimate falls back to the persisted value
+  or assumes 100 % — a load in that state while zoomed can misestimate
+  until a load with readable zoom, a ↺ reset, or a real calibration.
+  Saved calibrations are immune.
 
 ## Layout & interaction
 

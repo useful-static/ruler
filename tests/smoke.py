@@ -11,7 +11,7 @@ Usage:
 
 No dependencies beyond python3 and a chromium/chrome binary on PATH.
 """
-import argparse, base64, hashlib, json, os, shutil, socket, struct
+import argparse, base64, json, os, shutil, socket, struct
 import subprocess, sys, tempfile, time, urllib.request
 
 # ---------- minimal CDP websocket client (no pip deps) ----------
@@ -167,6 +167,22 @@ def run(url):
         c.cmd("Network.enable")
         c.cmd("Network.setCacheDisabled", {"cacheDisabled": True})
 
+        print("T0 old-schema storage is wiped once")
+        c.nav(url)
+        c.js("localStorage.clear();"
+             "localStorage.setItem('ruler.ppi.v1','40');"
+             "localStorage.setItem('ruler.devppi.v1','660');"
+             "localStorage.setItem('ruler.calres.v1','{\"w\":9600,\"h\":5400}')")
+        c.nav(url)
+        check("v1 keys wiped",
+              c.js("Object.keys(localStorage).filter(k =>"
+                   " k.startsWith('ruler.') && k.includes('.v1')).length") == 0)
+        check("schema stamped",
+              c.js("localStorage.getItem('ruler.schema')") == "2")
+        t0 = c.dbg()
+        check("defaults after wipe", approx(t0["devPpi"], t0["defaultPpi"], 0.5),
+              str(t0["devPpi"]))
+
         print("T1 clean load at 100%")
         c.nav(url)
         c.js("localStorage.clear()")
@@ -181,7 +197,7 @@ def run(url):
         check("band spans ~95% of viewport",
               approx(t1["bandCss"]["w"], 0.95 * c.js("innerWidth"), 30))
         check("estimate persisted",
-              c.js("localStorage.getItem('ruler.devppi.est.v1')") is not None)
+              c.js("localStorage.getItem('ruler.devppi.est.v2')") is not None)
         check("number labels drawn", label_ink(c) > 100)
 
         print("T2 zoom to 500% after load (dynamic tracking)")
@@ -214,16 +230,16 @@ def run(url):
 
         print("T5 poisoned estimates self-heal at 100%")
         c.js("localStorage.clear();"
-             "localStorage.setItem('ruler.devppi.est.v1','660');"
-             "localStorage.setItem('ruler.calres.v1','{\"w\":6400,\"h\":3600}')")
+             "localStorage.setItem('ruler.devppi.est.v2','660');"
+             "localStorage.setItem('ruler.calres.v2','{\"w\":6400,\"h\":3600}')")
         c.nav(url)
         t5 = c.dbg()
         check("high estimate healed", approx(t5["devPpi"], t5["defaultPpi"], 0.5),
               str(t5["devPpi"]))
         check("high native res healed",
               t5["calRes"]["w"] == c.js("screen.width"), str(t5["calRes"]))
-        c.js("localStorage.setItem('ruler.devppi.est.v1','24');"
-             "localStorage.setItem('ruler.calres.v1','{\"w\":200,\"h\":150}')")
+        c.js("localStorage.setItem('ruler.devppi.est.v2','24');"
+             "localStorage.setItem('ruler.calres.v2','{\"w\":200,\"h\":150}')")
         c.nav(url)
         t5b = c.dbg()
         check("low estimate healed", approx(t5b["devPpi"], t5b["defaultPpi"], 0.5),
@@ -231,7 +247,7 @@ def run(url):
         check("low native res healed",
               t5b["calRes"]["w"] == c.js("screen.width"), str(t5b["calRes"]))
         c.js("localStorage.clear();"
-             "localStorage.setItem('ruler.devppi.v1','2000')")   # impossible calibration
+             "localStorage.setItem('ruler.devppi.v2','2000')")   # impossible calibration
         c.nav(url)
         t5c = c.dbg()
         check("garbage calibration discarded",
