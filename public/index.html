@@ -267,13 +267,19 @@
       if (legacy > 0) { devPpi = legacy * dprNow(); localStorage.setItem(LS_KEY, String(devPpi)); }
       else devPpi = DEFAULT_PPI * dprNow();                          // auto-estimate (unsaved)
     }
-    let ppi = clampPpi(devPpi / dprNow());     // live CSS px per inch
-    function refreshPpi() { ppi = clampPpi(devPpi / dprNow()); }
+    devPpi = clampDevPpi(devPpi);              // guard a corrupted stored value
+    // CSS-ppi is devPpi / dpr, UNCLAMPED: browser zoom scales dpr, so at high zoom
+    // ppi legitimately drops (each CSS px is physically bigger). Clamping it here
+    // would pin the physical scale and shrink the number of units the ruler shows.
+    let ppi = devPpi / dprNow();               // live CSS px per inch
+    function refreshPpi() { ppi = devPpi / dprNow(); }
     let orientation = localStorage.getItem(LS_ORIENT) === "vertical" ? "vertical" : "horizontal";
     // Native (device) resolution captured at load = true panel px, zoom-invariant.
     let calRes = { w: Math.round(screen.width * dprNow()), h: Math.round(screen.height * dprNow()) };
 
-    function clampPpi(v) { return Math.min(360, Math.max(40, v)); }
+    // Guard on the zoom-INVARIANT device-ppi (not the per-draw CSS-ppi). Wide range:
+    // covers low-DPI TVs (~40) up to high-DPI phone panels (~1200), well past both.
+    function clampDevPpi(v) { return v > 0 ? Math.min(4000, Math.max(20, v)) : DEFAULT_PPI; }
     function cardPxFromPpi(p) { return p * CARD_IN; }
     function ppiFromCardPx(px) { return px / CARD_IN; }
 
