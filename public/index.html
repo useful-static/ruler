@@ -63,7 +63,7 @@
 
     /* ---- the ruler ---- */
     .ruler-wrap {
-      width: 90%;
+      width: 95%;
       background: var(--ruler-face);
       border: 1px solid var(--ruler-edge);
       border-radius: 16px;
@@ -90,7 +90,7 @@
       position: fixed; top: 0; bottom: 0; left: 50%; transform: translateX(-50%);
       z-index: 1; padding: 0; display: flex; align-items: center;
     }
-    body.vmode .ruler-wrap.vertical canvas#ruler { height: 90dvh; }
+    body.vmode .ruler-wrap.vertical canvas#ruler { height: 95dvh; }
     body.vmode header {
       position: fixed; inset: 0 0 auto 0; z-index: 5;
       background: transparent; pointer-events: none;   /* keep the ruler's top clickable */
@@ -223,7 +223,7 @@
     "use strict";
     const CARD_MM = 85.60;                 // ISO 7810 ID-1 long edge
     const CARD_IN = CARD_MM / 25.4;        // 3.370 in
-    const END = 24;                        // px run-out past the first/last mark (rounded ends)
+    const RADIUS = 16;                     // corner radius at 100% zoom (CSS px)
     const LOAD_DPR = window.devicePixelRatio || 1;   // chrome-scale baseline (zoom-invariant ruler)
     const LS_KEY = "ruler.devppi.v1";     // stored calibration: DEVICE px per inch (zoom-invariant)
     const LS_KEY_OLD = "ruler.ppi.v1";    // legacy: CSS px per inch (migrated on load)
@@ -323,9 +323,13 @@
       const dprReal = window.devicePixelRatio || 1;
       const k = LOAD_DPR / dprReal;              // counter-scale chrome so zoom can't fatten the ruler
       const horizontal = orientation === "horizontal";
-      // keep the band's PHYSICAL thickness constant across zoom (length stays 90%/90dvh)
+      // keep the band's PHYSICAL thickness constant across zoom (length stays 95%/95dvh)
       if (horizontal) { canvas.style.height = Math.round(160 * k) + "px"; canvas.style.width = ""; }
       else            { canvas.style.width = Math.round(220 * k) + "px"; canvas.style.height = ""; }
+      // corner radius stays physically constant across zoom too
+      const radius = (RADIUS * k).toFixed(1) + "px";
+      wrap.style.borderRadius = radius;          // horizontal: the wrap carries the radius
+      canvas.style.borderRadius = radius;        // vertical: the canvas does
 
       const dpr = Math.max(1, dprReal);
       const cssW = canvas.clientWidth;
@@ -368,7 +372,9 @@
 
       // ---- centimetres — ticks from the near edge (top / left) ----
       const pxPerMm = ppi / 25.4;
-      const end = END * k;
+      // band spans 95% of the viewport, the measuring section 90%: the run-out
+      // past the first/last mark is (95−90)/2 = 2.5% of the viewport per end
+      const end = along * (0.05 / 0.95) / 2;
       const span = along - 2 * end;              // measuring length; ticks run end..along-end
       // decimate cm numbers so they never crowd: label every cmStep cm
       // (measureText uses the device-px font, so compare in device px)

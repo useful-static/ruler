@@ -58,11 +58,13 @@ serving a physically-accurate on-screen ruler at **ruler.free** and
 
 ## Layout & interaction
 
-- **R10 — Geometry.** The ruler is centered and spans 90 % of the viewport
-  (width when horizontal, height when vertical), with a 1 px edge line and
-  inset shadow on **all four sides**, rounded ends (16 px radius), and a
-  run-out extending past the 0 and last mark so ticks never enter the
-  corner radius.
+- **R10 — Geometry.** The ruler band is centered and spans 95 % of the
+  viewport (width when horizontal, height when vertical) while the
+  measuring section (first to last tick) spans 90 %, leaving a 2.5 %
+  run-out past the 0 and last mark at each end. The band has a 1 px edge
+  line and inset shadow on **all four sides** and rounded ends (16 px
+  radius at 100 %, physically constant across zoom) that the ticks never
+  enter.
 - **R11 — Orientation toggle.** Clicking the ruler (or the header button)
   flips horizontal ↔ vertical; the choice persists. Vertical mode runs the
   ruler top-to-bottom centered, moves the info readouts to the left, and
