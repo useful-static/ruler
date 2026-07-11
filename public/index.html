@@ -352,12 +352,16 @@
       const pxPerMm = ppi / 25.4;
       const end = END * k;
       const span = along - 2 * end;              // measuring length; ticks run end..along-end
+      // decimate cm numbers so they never crowd: label every cmStep cm
+      const cmMax = Math.floor(span / (10 * pxPerMm));
+      const cmNeed = ctx.measureText(String(Math.max(cmMax, 0))).width + 10 * k;
+      const cmStep = [1, 2, 5, 10, 20, 50, 100, 200, 500].find(s => 10 * pxPerMm * s >= cmNeed) || 1000;
       ctx.textBaseline = "middle";
       for (let mm = 0; mm * pxPerMm <= span + 0.5; mm++) {
         const m = end + mm * pxPerMm;
         const len = (mm % 10 === 0 ? 34 : mm % 5 === 0 ? 22 : 12) * k;
         tick(m, 0, len, 1, ink);
-        if (mm % 10 === 0 && m + 2 < along - end) {
+        if (mm % 10 === 0 && (mm / 10) % cmStep === 0 && m + 2 < along - end) {
           ctx.fillStyle = accent;
           ctx.textAlign = "left";
           const [lx, ly] = horizontal ? [m + 3 * k, len + 8 * k] : [len + 6 * k, m];
@@ -367,12 +371,16 @@
 
       // ---- inches — ticks from the far edge (bottom / right), 1/16" ----
       const pxPer16 = ppi / 16;
+      // decimate inch numbers likewise: label every inStep inches (1,2,3,6,12…)
+      const inMax = Math.floor(span / ppi);
+      const inNeed = ctx.measureText(String(Math.max(inMax, 0))).width + 10 * k;
+      const inStep = [1, 2, 3, 6, 12, 24, 48, 96].find(s => ppi * s >= inNeed) || 192;
       ctx.fillStyle = ink;
       for (let s = 0; s * pxPer16 <= span + 0.5; s++) {
         const m = end + s * pxPer16;
         const len = (s % 16 === 0 ? 34 : s % 8 === 0 ? 24 : s % 4 === 0 ? 18 : s % 2 === 0 ? 12 : 7) * k;
         tick(m, depth - len, depth, 1, ink);
-        if (s % 16 === 0 && m + 2 < along - end) {
+        if (s % 16 === 0 && (s / 16) % inStep === 0 && m + 2 < along - end) {
           if (horizontal) { ctx.textAlign = "left";  ctx.fillText(String(s / 16), m + 3 * k, depth - len - 8 * k); }
           else            { ctx.textAlign = "right"; ctx.fillText(String(s / 16), depth - len - 6 * k, m); }
         }
