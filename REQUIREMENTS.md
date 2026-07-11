@@ -33,18 +33,22 @@ serving a physically-accurate on-screen ruler at **ruler.free** and
 
 ## Zoom behaviour
 
-- **R6 — The ruler is zoom-proof.** Changing browser zoom must not change
-  the ruler's physical size, span, or unit count: a 10 cm object measures
-  10 cm at 25 %, 100 % and 500 % zoom. Zoom only re-renders it sharper.
-- **R7 — Chrome doesn't inflate.** Band thickness, tick lengths, run-out,
-  and label sizes hold constant physical size across zoom (counter-scaled
-  by `LOAD_DPR / devicePixelRatio`); the ruler must not get wider/fatter
-  when zooming in.
-- **R8 — Labels stay legible at any zoom.** Numbers are rasterized at a
-  constant *integer device-pixel* font size under an identity transform —
-  never as a tiny fractional CSS size (e.g. `2.4px` at 500 %) through the
-  scale transform, which font-hinting renders blank/illegible on some
-  platforms.
+- **R6 — The whole page is zoom-proof.** Browser zoom must not change the
+  ruler's physical size, span, or unit count — a 10 cm object measures
+  10 cm at 25 %, 100 % and 500 % zoom — and must not fatten the tick
+  lines, borders, or corner radius, nor reflow/clobber the header, info
+  readouts, or calibration panel. Implemented as a page-wide counter-zoom
+  (`body { zoom: LOAD_DPR / devicePixelRatio }`), which pins every CSS px
+  at a constant physical size so the page renders identically at every
+  zoom level; a `--z` custom property compensates viewport units
+  (`vh`/`vw`/`dvh`), which the body zoom does not reach.
+- **R7 — Tick lines stay thin.** Under the counter-zoom, 1 px lines stay
+  1 device px (at load scale) at any zoom — zooming in must never produce
+  fat marks or edges.
+- **R8 — Labels stay legible at any zoom.** Under the counter-zoom the
+  label font is a constant 12 px at all zoom levels — never a tiny
+  fractional CSS size (e.g. `2.4px`), which font-hinting renders
+  blank/illegible on some platforms.
 - **R9 — Adaptive label decimation.** When marks crowd (zoomed out, small
   ruler, low ppi), number labels thin to a logical step — cm from
   {1, 2, 5, 10, 20, 50, …}, inches from {1, 2, 3, 6, 12, 24, …} — chosen as
