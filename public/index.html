@@ -195,7 +195,8 @@
     "use strict";
     const CARD_MM = 85.60;                 // ISO 7810 ID-1 long edge
     const CARD_IN = CARD_MM / 25.4;        // 3.370 in
-    const LS_KEY = "ruler.ppi.v1";
+    const LS_KEY = "ruler.devppi.v1";     // stored calibration: DEVICE px per inch (zoom-invariant)
+    const LS_KEY_OLD = "ruler.ppi.v1";    // legacy: CSS px per inch (migrated on load)
     // Best default WITHOUT calibration, from each platform's own density baseline:
     // desktop CSS px ≈ 1/96 in, but touch platforms define CSS px as a dp/point
     // ≈ 1/160 in (phones) / ~1/132 in (tablets). Physical size still isn't
@@ -226,11 +227,21 @@
     const infoZoom = document.getElementById("infoZoom");
     const infoSize = document.getElementById("infoSize");
 
-    let ppi = clampPpi(parseFloat(localStorage.getItem(LS_KEY)) || DEFAULT_PPI);
+    const dprNow = () => window.devicePixelRatio || 1;
+    // Store calibration as DEVICE px per inch — zoom-invariant, since browser zoom
+    // only scales devicePixelRatio. The live CSS-ppi = devPpi / dpr is recomputed
+    // each draw, so the ruler keeps its PHYSICAL size when the user changes zoom.
+    let devPpi = parseFloat(localStorage.getItem(LS_KEY));
+    if (!(devPpi > 0)) {
+      const legacy = parseFloat(localStorage.getItem(LS_KEY_OLD));   // old CSS-ppi value
+      if (legacy > 0) { devPpi = legacy * dprNow(); localStorage.setItem(LS_KEY, String(devPpi)); }
+      else devPpi = DEFAULT_PPI * dprNow();                          // auto-estimate (unsaved)
+    }
+    let ppi = clampPpi(devPpi / dprNow());     // live CSS px per inch
+    function refreshPpi() { ppi = clampPpi(devPpi / dprNow()); }
     let orientation = localStorage.getItem(LS_ORIENT) === "vertical" ? "vertical" : "horizontal";
-    // Native resolution used for spec-calibration (editable); default = detected.
-    let calRes = { w: Math.round(screen.width * (window.devicePixelRatio || 1)),
-                   h: Math.round(screen.height * (window.devicePixelRatio || 1)) };
+    // Native (device) resolution captured at load = true panel px, zoom-invariant.
+    let calRes = { w: Math.round(screen.width * dprNow()), h: Math.round(screen.height * dprNow()) };
 
     function clampPpi(v) { return Math.min(360, Math.max(40, v)); }
     function cardPxFromPpi(p) { return p * CARD_IN; }
@@ -262,7 +273,7 @@
         + ` <span class="hint">(browser-zoom × display-scale — not separable)</span>`;
 
       const calibrated = localStorage.getItem(LS_KEY) != null;
-      const wIn = (calRes.w / dpr) / ppi, hIn = (calRes.h / dpr) / ppi;
+      const wIn = calRes.w / devPpi, hIn = calRes.h / devPpi;   // physical, zoom-invariant
       const diag = Math.hypot(wIn, hIn);
       infoSize.innerHTML = `<span class="hot" title="Click to set your screen's diagonal size (inches)">`
         + `≈ ${(wIn * 2.54).toFixed(1)} × ${(hIn * 2.54).toFixed(1)} cm · ${diag.toFixed(1)}″</span>`
@@ -272,6 +283,7 @@
 
     // ---- draw the ruler (works along either axis) ----
     function draw() {
+      refreshPpi();                              // track browser-zoom (dpr) changes
       const dpr = Math.max(1, window.devicePixelRatio || 1);
       const cssW = canvas.clientWidth;
       const cssH = canvas.clientHeight;
@@ -409,22 +421,20 @@
       });
       return inputs;
     }
-    function cssDiagIn() {   // current physical diagonal in inches, from calRes + ppi
-      const dpr = window.devicePixelRatio || 1;
-      return Math.hypot(calRes.w / dpr, calRes.h / dpr) / ppi;
+    function physDiagIn() {   // physical diagonal in inches (zoom-invariant)
+      return Math.hypot(calRes.w, calRes.h) / devPpi;
     }
     function editSize(hotEl) {
       const ins = inlineEditFields(hotEl, [
-        { value: cssDiagIn().toFixed(1), size: 5 },
+        { value: physDiagIn().toFixed(1), size: 5 },
         { options: ["in", "cm"], value: "in" },
         { text: " diagonal" },
       ], (vals) => {
         let d = parseFloat(vals[0]);
         if (vals[1] === "cm") d /= 2.54;
         if (d > 0.3 && d < 400) {
-          const dpr = window.devicePixelRatio || 1;
-          ppi = clampPpi(Math.hypot(calRes.w / dpr, calRes.h / dpr) / d);
-          localStorage.setItem(LS_KEY, String(ppi)); syncCalUI();
+          devPpi = Math.hypot(calRes.w, calRes.h) / d;              // device px per inch
+          localStorage.setItem(LS_KEY, String(devPpi)); refreshPpi(); syncCalUI();
         }
       });
       if (ins && ins[1]) ins[1].addEventListener("change", () => {   // live in <-> cm convert
@@ -433,7 +443,7 @@
       });
     }
     function editRes(hotEl) {
-      const keepDiag = cssDiagIn();                // preserve the physical size
+      const keepDiag = physDiagIn();               // preserve the physical size
       inlineEditFields(hotEl, [
         { value: String(calRes.w), size: 5 },
         { text: " × " },
@@ -442,9 +452,8 @@
         const w = parseInt(vals[0], 10), h = parseInt(vals[1], 10);
         if (w >= 100 && h >= 100 && w < 100000 && h < 100000) {
           calRes = { w, h };
-          const dpr = window.devicePixelRatio || 1;
-          ppi = clampPpi(Math.hypot(calRes.w / dpr, calRes.h / dpr) / keepDiag);
-          localStorage.setItem(LS_KEY, String(ppi)); syncCalUI();
+          devPpi = Math.hypot(calRes.w, calRes.h) / keepDiag;
+          localStorage.setItem(LS_KEY, String(devPpi)); refreshPpi(); syncCalUI();
         }
       });
     }
@@ -452,20 +461,19 @@
     infoRes.addEventListener("click", (e) => { const h = e.target.closest(".hot"); if (h) editRes(h); });
 
     slider.addEventListener("input", () => {
-      ppi = clampPpi(ppiFromCardPx(parseFloat(slider.value)));
-      syncCalUI();
-      draw();
+      devPpi = ppiFromCardPx(parseFloat(slider.value)) * dprNow();   // card measured at current zoom
+      refreshPpi(); syncCalUI(); draw();
     });
     saveBtn.addEventListener("click", () => {
-      localStorage.setItem(LS_KEY, String(ppi));
+      localStorage.setItem(LS_KEY, String(devPpi));
       saveBtn.textContent = "Saved ✓";
       draw();
       setTimeout(() => (saveBtn.textContent = "Save"), 1200);
     });
     resetBtn.addEventListener("click", () => {
-      ppi = DEFAULT_PPI;
-      localStorage.removeItem(LS_KEY);
-      syncCalUI(); draw();
+      devPpi = DEFAULT_PPI * dprNow();
+      localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_KEY_OLD);
+      refreshPpi(); syncCalUI(); draw();
     });
     toggle.addEventListener("click", () => {
       panel.hidden = !panel.hidden;
@@ -476,7 +484,7 @@
 
     // ---- lifecycle ----
     let raf = 0;
-    const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); };
+    const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { draw(); syncCalUI(); }); };
     window.addEventListener("resize", redraw);
     if (window.visualViewport) window.visualViewport.addEventListener("resize", redraw);
     if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", redraw);
