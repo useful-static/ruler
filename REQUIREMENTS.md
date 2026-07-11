@@ -33,31 +33,43 @@ serving a physically-accurate on-screen ruler at **ruler.free** and
 
 ## Zoom behaviour
 
-- **R6 — The whole page is zoom-proof.** Browser zoom must not change the
-  ruler's physical size, span, or unit count — a 10 cm object measures
-  10 cm at 25 %, 100 % and 500 % zoom — and must not fatten the tick
-  lines, borders, or corner radius, nor reflow/clobber the header, info
-  readouts, or calibration panel. Implemented as a page-wide counter-zoom
-  (`body { zoom: LOAD_DPR / devicePixelRatio }`), which pins every CSS px
-  at a constant physical size so the page renders identically at every
-  zoom level; a `--z` custom property compensates viewport units
-  (`vh`/`vw`/`dvh`), which the body zoom does not reach.
-- **R7 — Tick lines stay thin.** Under the counter-zoom, 1 px lines stay
-  1 device px (at load scale) at any zoom — zooming in must never produce
-  fat marks or edges.
-- **R8 — Labels stay legible at any zoom.** Under the counter-zoom the
-  label font is a constant 12 px at all zoom levels — never a tiny
+- **R6 — The ruler is zoom-proof; the page around it zooms normally.**
+  Browser zoom must not change the ruler's physical size, span, unit
+  count, line weights, or corner radius — a 10 cm object measures 10 cm at
+  25 %, 100 % and 500 % zoom. The DOM (header, readouts, panel) follows
+  the browser's zoom like any web page, so the user can always make the
+  text bigger — the page must never counter-zoom the DOM (an earlier
+  page-wide `body{zoom}` design made everything unreadably small whenever
+  the load-time baseline was captured at a remembered per-site zoom).
+- **R7 — Ruler chrome is anchored to the calibration, not to load state.**
+  Band thickness, tick lengths, run-out, radius, and label sizes scale by
+  `k = ppi/96` — a function of the persisted `devPpi` and live dpr only —
+  so the band is the same physical size on every display and at every
+  zoom, and no load-time dpr snapshot can bake a wrong baseline. Tick
+  positions and widths snap to whole device px (~1 device px lines: thin
+  at any zoom).
+- **R8 — Labels stay legible at any zoom.** Canvas text renders at an
+  integer device-px size through an identity transform — never a tiny
   fractional CSS size (e.g. `2.4px`), which font-hinting renders
   blank/illegible on some platforms.
+- **R8b — Readouts track zoom live.** The dpr/zoom readout and ruler
+  re-render on every zoom change (resize + a re-arming `resolution`
+  media-query watcher; dpr is read inside rAF because resize can dispatch
+  before it settles).
+- **R8c — Reloading while zoomed looks identical.** The first auto-estimate
+  is persisted (`ruler.devppi.est.v1`), so a refresh at any remembered
+  per-site zoom renders exactly like zooming after load. Reset re-estimates
+  at the current zoom (assumes 100 %).
 - **R9 — Adaptive label decimation.** When marks crowd (zoomed out, small
   ruler, low ppi), number labels thin to a logical step — cm from
   {1, 2, 5, 10, 20, 50, …}, inches from {1, 2, 3, 6, 12, 24, …} — chosen as
   the smallest step whose mark spacing fits the widest label plus a gap.
   Each scale decimates independently; ticks are never removed.
-- **Known limitation — load-while-zoomed.** On a *first* visit with no
-  saved calibration, the auto-estimate can't separate browser-zoom from
-  OS-scaling inside `devicePixelRatio`, so a page loaded at e.g. 500 % zoom
-  misestimates until zoom returns to 100 % or the user calibrates. Saved
+- **Known limitation — first visit while zoomed.** On the *first-ever*
+  visit with no saved calibration or estimate, the auto-estimate can't
+  separate browser-zoom from OS-scaling inside `devicePixelRatio`, so a
+  first load at e.g. 500 % zoom misestimates until Reset (at 100 %) or a
+  real calibration. All later reloads are consistent (R8c); saved
   calibrations are immune.
 
 ## Layout & interaction
