@@ -15,6 +15,20 @@ A free, single-page **on-screen ruler** in centimetres and inches.
 python3 -m http.server 8080 --directory public   # then open http://localhost:8080
 ```
 
+## Smoke tests — run before every push
+
+```sh
+python3 tests/smoke.py                    # local public/index.html
+python3 tests/smoke.py --url https://ruler.free   # verify a live deploy
+```
+
+Headless-Chromium suite (no pip deps) asserting the invariants that have
+broken before: sane default sizes, physical zoom-invariance (25–500 %),
+reload-while-zoomed consistency, estimate self-healing, calibration
+round-trips (slider / click-to-set / ↺ resets), visible number labels, and
+orientation persistence. A change to `public/index.html` is not pushable
+until `tests/smoke.py` exits 0.
+
 ## Deploy — Cloudflare Workers (static assets)
 
 Served as an **assets-only Worker**: `wrangler.jsonc` points at

@@ -101,3 +101,9 @@ serving a physically-accurate on-screen ruler at **ruler.free** and
   Namecheap, DNS + TLS via Cloudflare; both serve the same Worker.
 - **R15 — Authorship.** Commits are authored `Useful Static
   <useful.static@known.name>` with no AI attribution trailers.
+- **R16 — Smoke tests gate every change.** `tests/smoke.py` (headless
+  Chromium, no deps) must pass before any push touching
+  `public/index.html`: default sizes, zoom-invariance, zoomed-reload
+  consistency, estimate healing, calibration round-trips, label
+  visibility, orientation. Run with `--url https://ruler.free` after a
+  deploy to verify production.

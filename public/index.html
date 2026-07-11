@@ -265,6 +265,13 @@
     // stored as DEVICE px per inch, and the live CSS-ppi = devPpi / dpr is
     // recomputed on every draw, so zoom never changes what the ruler measures.
     let devPpi = parseFloat(localStorage.getItem(LS_KEY));
+    // A stored CALIBRATION can still be garbage from an interaction while a
+    // broken state was live. No real panel exceeds ~500 CSS px/in at 100%
+    // zoom, so a value above 500 × max(1, dpr) is impossible — discard it.
+    if (devPpi > 500 * Math.max(1, dprNow())) {
+      localStorage.removeItem(LS_KEY);
+      devPpi = NaN;                            // fall through to the estimate path
+    }
     if (!(devPpi > 0)) {
       const legacy = parseFloat(localStorage.getItem(LS_KEY_OLD));   // old CSS-ppi value
       if (legacy > 0) { devPpi = legacy * dprNow(); localStorage.setItem(LS_KEY, String(devPpi)); }
@@ -278,12 +285,13 @@
           localStorage.setItem(LS_EST, String(devPpi));
         }
         // Self-heal a zoom-poisoned estimate. OS display scale is ≥ 1, so an
-        // UNCALIBRATED devPpi can never legitimately exceed DEFAULT_PPI ×
-        // max(1, current dpr): if it does, the estimate was captured while
-        // zoomed IN — re-cap it (fully heals the first time the page is seen
-        // at 100%). A good estimate under a zoomed reload (dpr high) passes.
+        // UNCALIBRATED devPpi must sit in [DEFAULT_PPI, DEFAULT_PPI ×
+        // max(1, current dpr)]: above the cap it was captured zoomed IN,
+        // below the floor it was captured zoomed OUT — either way re-estimate
+        // (fully heals the first time the page is seen at 100%). A good
+        // estimate under a zoomed reload (dpr high) passes untouched.
         const cap = DEFAULT_PPI * Math.max(1, dprNow());
-        if (devPpi > cap * 1.01) {
+        if (devPpi > cap * 1.01 || devPpi < DEFAULT_PPI * 0.99) {
           devPpi = cap;
           localStorage.setItem(LS_EST, String(devPpi));
         }
@@ -305,10 +313,10 @@
       localStorage.setItem(LS_RES, JSON.stringify(calRes));
     }
     // Self-heal a zoom-poisoned resolution ESTIMATE (never a user-typed one):
-    // native width can't exceed screen.width × a plausible OS scale (≤3).
+    // native width sits in [screen.width, screen.width × a plausible OS scale (≤3)].
     if (!calRes.user) {
       const capW = screen.width * Math.max(1, Math.min(dprNow(), 3));
-      if (calRes.w > capW * 1.01) {
+      if (calRes.w > capW * 1.01 || calRes.w < screen.width * 0.99) {
         calRes = { w: Math.round(screen.width * Math.max(1, dprNow())),
                    h: Math.round(screen.height * Math.max(1, dprNow())) };
         localStorage.setItem(LS_RES, JSON.stringify(calRes));
@@ -649,6 +657,16 @@
     applyOrientation();
     syncCalUI();
     draw();
+
+    // ---- test hook (read-only) — used by tests/smoke.py ----
+    window.RULER_DEBUG = () => ({
+      devPpi, ppi, dpr: dprNow(), defaultPpi: DEFAULT_PPI,
+      calRes: { ...calRes }, orientation,
+      calibrated: localStorage.getItem(LS_KEY) != null,
+      bandCss: { w: canvas.clientWidth, h: canvas.clientHeight },
+      bandDev: { w: Math.round(canvas.clientWidth * dprNow()),
+                 h: Math.round(canvas.clientHeight * dprNow()) },
+    });
   })();
   </script>
 </body>
