@@ -260,6 +260,28 @@
     const infoSize = document.getElementById("infoSize");
 
     const dprNow = () => window.devicePixelRatio || 1;
+    // ---- zoom-factor estimation ----
+    // dpr = browser-zoom × OS-scale and no API splits them, BUT Chrome keeps
+    // outerWidth in OS-scale px while innerWidth is zoomed CSS px, so their
+    // ratio ≈ the zoom factor. Snap it to the browser's discrete zoom levels;
+    // null when unrecognizable (devtools docked aside, unusual window chrome).
+    const ZOOM_LEVELS = [0.25, 1 / 3, 0.5, 2 / 3, 0.75, 0.8, 0.9, 1,
+                         1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
+    function zoomFactorEst() {
+      if (!(outerWidth > 0 && innerWidth > 0)) return null;
+      const r = outerWidth / innerWidth;
+      let best = null, err = 0.06;               // 6% tolerance
+      for (const z of ZOOM_LEVELS) {
+        const e = Math.abs(r / z - 1);
+        if (e < err) { err = e; best = z; }
+      }
+      return best;
+    }
+    // OS display scale with the browser zoom factored out (≥ 1); null if unknown
+    function osScaleEst() {
+      const z = zoomFactorEst();
+      return z ? Math.max(1, dprNow() / z) : null;
+    }
     // The DOM zooms NORMALLY with the browser (text stays readable, layout is the
     // browser's problem). Only the RULER is pinned physically: calibration is
     // stored as DEVICE px per inch, and the live CSS-ppi = devPpi / dpr is
@@ -276,23 +298,27 @@
       const legacy = parseFloat(localStorage.getItem(LS_KEY_OLD));   // old CSS-ppi value
       if (legacy > 0) { devPpi = legacy * dprNow(); localStorage.setItem(LS_KEY, String(devPpi)); }
       else {
-        // Auto-estimate — PERSISTED under its own key so every later reload
-        // (at any zoom Chrome remembered for the site) reuses the same value:
-        // refreshing while zoomed must look identical to zooming after load.
-        devPpi = parseFloat(localStorage.getItem(LS_EST));
-        if (!(devPpi > 0)) {
-          devPpi = DEFAULT_PPI * dprNow();     // assumes this first visit is at 100%
+        // Auto-estimate, ZOOM-INDEPENDENT: when the zoom factor is
+        // recognizable, recompute DEFAULT × OS-scale on every load — the same
+        // physical ruler no matter what zoom the page loads at. Fall back to
+        // the persisted last-known-good estimate when zoom can't be read.
+        const os = osScaleEst();
+        if (os) {
+          devPpi = DEFAULT_PPI * os;
           localStorage.setItem(LS_EST, String(devPpi));
+        } else {
+          devPpi = parseFloat(localStorage.getItem(LS_EST));
+          if (!(devPpi > 0)) {
+            devPpi = DEFAULT_PPI * Math.max(1, dprNow());
+            localStorage.setItem(LS_EST, String(devPpi));
+          }
         }
-        // Self-heal a zoom-poisoned estimate. OS display scale is ≥ 1, so an
-        // UNCALIBRATED devPpi must sit in [DEFAULT_PPI, DEFAULT_PPI ×
-        // max(1, current dpr)]: above the cap it was captured zoomed IN,
-        // below the floor it was captured zoomed OUT — either way re-estimate
-        // (fully heals the first time the page is seen at 100%). A good
-        // estimate under a zoomed reload (dpr high) passes untouched.
+        // Backstop heal: OS scale is ≥ 1, so an UNCALIBRATED devPpi must sit
+        // in [DEFAULT_PPI, DEFAULT_PPI × max(1, dpr)] — outside it the stored
+        // estimate was zoom-poisoned by an older build; re-estimate.
         const cap = DEFAULT_PPI * Math.max(1, dprNow());
         if (devPpi > cap * 1.01 || devPpi < DEFAULT_PPI * 0.99) {
-          devPpi = cap;
+          devPpi = DEFAULT_PPI * (os || 1);
           localStorage.setItem(LS_EST, String(devPpi));
         }
       }
@@ -303,22 +329,26 @@
     let ppi = devPpi / dprNow();               // live CSS px per inch
     function refreshPpi() { ppi = devPpi / dprNow(); }
     let orientation = localStorage.getItem(LS_ORIENT) === "vertical" ? "vertical" : "horizontal";
-    // Native (device) resolution. screen×dpr is only exact at 100% zoom, so the
-    // estimate is PERSISTED like devPpi — a reload at a remembered per-site zoom
-    // must not multiply the native res by the zoom (1920×1080 → "9600×5400").
+    // Native (device) resolution = screen × OS-scale. screen×dpr is only exact
+    // at 100% zoom, so use the zoom-independent OS-scale estimate when
+    // available; otherwise reuse the persisted value (never multiply by zoom).
     let calRes = null;
     try { calRes = JSON.parse(localStorage.getItem(LS_RES)); } catch (e) { /* re-estimate */ }
     if (!(calRes && calRes.w >= 100 && calRes.h >= 100 && calRes.w < 100000 && calRes.h < 100000)) {
-      calRes = { w: Math.round(screen.width * dprNow()), h: Math.round(screen.height * dprNow()) };
-      localStorage.setItem(LS_RES, JSON.stringify(calRes));
+      calRes = null;
     }
-    // Self-heal a zoom-poisoned resolution ESTIMATE (never a user-typed one):
-    // native width sits in [screen.width, screen.width × a plausible OS scale (≤3)].
-    if (!calRes.user) {
+    if (!(calRes && calRes.user)) {
+      const os = osScaleEst();
+      if (os || !calRes) {
+        const d = os || Math.max(1, dprNow());
+        calRes = { w: Math.round(screen.width * d), h: Math.round(screen.height * d) };
+        localStorage.setItem(LS_RES, JSON.stringify(calRes));
+      }
+      // backstop: native width sits in [screen, screen × plausible OS scale (≤3)]
       const capW = screen.width * Math.max(1, Math.min(dprNow(), 3));
       if (calRes.w > capW * 1.01 || calRes.w < screen.width * 0.99) {
-        calRes = { w: Math.round(screen.width * Math.max(1, dprNow())),
-                   h: Math.round(screen.height * Math.max(1, dprNow())) };
+        calRes = { w: Math.round(screen.width * (os || 1)),
+                   h: Math.round(screen.height * (os || 1)) };
         localStorage.setItem(LS_RES, JSON.stringify(calRes));
       }
     }
@@ -353,9 +383,11 @@
         + ` <span class="hint">native</span>`
         + ` · <span class="act" title="Redetect the native resolution from this screen (at 100% zoom)">↺ redetect</span>`;
 
+      const zf = zoomFactorEst();
       infoZoom.innerHTML = `${dpr.toFixed(2)}× dpr`
         + (vv !== 1 ? ` · pinch ${Math.round(vv * 100)}%` : ``)
-        + ` <span class="hint">(browser-zoom × display-scale — not separable)</span>`;
+        + (zf ? ` <span class="hint">≈ ${Math.round(zf * 100)}% zoom × ${(dpr / zf).toFixed(2)}× display-scale</span>`
+              : ` <span class="hint">(browser-zoom × display-scale — not separable)</span>`);
 
       const calibrated = localStorage.getItem(LS_KEY) != null;
       const wIn = calRes.w / devPpi, hIn = calRes.h / devPpi;   // physical, zoom-invariant
@@ -595,13 +627,13 @@
       });
     }
     // ---- resets: every auto-detected value has a labelled ↺ clickable ----
-    function resetResolution() {                 // redetect native res (assumes 100% zoom)
-      const d = Math.max(1, dprNow());           // OS scale is never below 1
+    function resetResolution() {                 // redetect native res, zoom factored out
+      const d = osScaleEst() || Math.max(1, dprNow());
       calRes = { w: Math.round(screen.width * d), h: Math.round(screen.height * d) };
       saveCalRes(); syncCalUI(); draw();
     }
     function resetCalibration() {                // back to the device-class estimate
-      devPpi = DEFAULT_PPI * Math.max(1, dprNow());
+      devPpi = DEFAULT_PPI * (osScaleEst() || Math.max(1, dprNow()));
       localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_KEY_OLD);
       localStorage.setItem(LS_EST, String(devPpi));   // keep reloads consistent
       refreshPpi(); syncCalUI(); draw();

@@ -268,7 +268,22 @@ def run(url):
         check("↺ redetect restores detected res",
               t6d["calRes"]["w"] == c.js("screen.width"), str(t6d["calRes"]))
 
-        print("T7 orientation")
+        print("T7 fresh load at any zoom gives the same physical ruler")
+        for dsf, w, h in [(5, 320, 180), (2, 800, 450), (0.5, 3200, 1800)]:
+            c.js("localStorage.clear()")
+            c.zoom(dsf, w, h)
+            c.nav(url)
+            tz = c.dbg()
+            check(f"load at {int(dsf*100)}%: devPpi zoom-independent",
+                  approx(tz["devPpi"], t1["devPpi"], 1),
+                  f'{tz["devPpi"]} vs {t1["devPpi"]}')
+            check(f"load at {int(dsf*100)}%: native res stable",
+                  tz["calRes"]["w"] == t1["calRes"]["w"], str(tz["calRes"]))
+            c.unzoom()
+        c.js("localStorage.clear()")
+        c.nav(url)
+
+        print("T8 orientation")
         c.js("localStorage.clear()")
         c.nav(url)
         c.js("document.getElementById('ruler').click()")
