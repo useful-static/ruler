@@ -408,16 +408,33 @@
     function drawWoodGrain(along, depth, horizontal, k, cssW, cssH) {
       const rnd = mulberry32(0x52554C52);        // fixed seed: stable grain
       ctx.save();
+      // broad growth-ring bands first: wide, soft, slow waves
+      for (let i = 0; i < 5; i++) {
+        const c = (i + 0.5) / 5 * depth + (rnd() - 0.5) * 10 * k;
+        const amp = (2 + rnd() * 4) * k;
+        const wl = along * (0.6 + rnd() * 0.5);
+        const phase = rnd() * Math.PI * 2;
+        ctx.strokeStyle = "rgba(150,120,60,0.06)";
+        ctx.lineWidth = (8 + rnd() * 10) * k;
+        ctx.beginPath();
+        const STEP = Math.max(12 * k, along / 64);
+        for (let m = 0; m <= along; m += STEP) {
+          const cc = c + Math.sin(phase + (m / wl) * Math.PI * 2) * amp;
+          const [x, y] = horizontal ? [m, cc] : [cc, m];
+          if (m === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
       // grain lines
       const lines = Math.max(14, Math.round(depth / 7));
       for (let i = 0; i < lines; i++) {
         const c = (i + 0.5) / lines * depth + (rnd() - 0.5) * 4 * k;
-        const amp = (0.6 + rnd() * 2.2) * k;
+        const amp = (0.8 + rnd() * 2.6) * k;
         const wl = along * (0.35 + rnd() * 0.55);
         const phase = rnd() * Math.PI * 2;
-        const strong = rnd() < 0.14;             // occasional darker streak
-        ctx.strokeStyle = strong ? "rgba(122,94,44,0.075)" : "rgba(138,115,64,0.045)";
-        ctx.lineWidth = (strong ? 1.4 : 0.8) * k;
+        const strong = rnd() < 0.18;             // occasional darker streak
+        ctx.strokeStyle = strong ? "rgba(116,86,36,0.16)" : "rgba(134,106,52,0.10)";
+        ctx.lineWidth = (strong ? 1.5 : 0.9) * k;
         ctx.beginPath();
         const STEP = Math.max(12 * k, along / 64);
         for (let m = 0; m <= along; m += STEP) {
@@ -431,10 +448,10 @@
       // shading toward the far edge — reads as a gently curved surface
       const g = horizontal ? ctx.createLinearGradient(0, 0, 0, cssH)
                            : ctx.createLinearGradient(0, 0, cssW, 0);
-      g.addColorStop(0.00, "rgba(255,255,255,0.16)");
+      g.addColorStop(0.00, "rgba(255,255,255,0.20)");
       g.addColorStop(0.30, "rgba(255,255,255,0.00)");
       g.addColorStop(0.85, "rgba(96,72,32,0.00)");
-      g.addColorStop(1.00, "rgba(96,72,32,0.07)");
+      g.addColorStop(1.00, "rgba(96,72,32,0.10)");
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, cssW, cssH);
       ctx.restore();
