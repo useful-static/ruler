@@ -63,7 +63,7 @@
 
     /* ---- the ruler ---- */
     .ruler-wrap {
-      width: 100%;
+      width: 90%;
       background: var(--ruler-face);
       border-top: 1px solid var(--ruler-edge);
       border-bottom: 1px solid var(--ruler-edge);
@@ -86,19 +86,21 @@
     /* ---- vertical mode: ruler runs top→bottom; info left, calibration right ---- */
     body.vmode .ruler-wrap.vertical {
       position: fixed; top: 0; bottom: 0; left: 50%; transform: translateX(-50%);
-      z-index: 1; padding: 0;
+      z-index: 1; padding: 0; display: flex; align-items: center;
     }
-    body.vmode .ruler-wrap.vertical canvas#ruler { height: 100dvh; }
+    body.vmode .ruler-wrap.vertical canvas#ruler { height: 90dvh; }
     body.vmode header {
       position: fixed; inset: 0 0 auto 0; z-index: 5;
       background: transparent; pointer-events: none;   /* keep the ruler's top clickable */
     }
     body.vmode header h1, body.vmode header .ppi, body.vmode header button { pointer-events: auto; }
     body.vmode .info {
-      position: fixed; left: clamp(10px, 2vw, 24px); top: 50%; transform: translateY(-50%);
+      position: fixed; left: clamp(10px, 2vw, 24px); right: calc(50% + 130px);
+      top: 50%; transform: translateY(-50%);
       z-index: 2; flex-direction: column; align-items: flex-start;
-      justify-content: center; gap: 12px; max-width: 42vw;
+      justify-content: center; gap: 12px;
     }
+    body.vmode .info > div { white-space: normal; }
     body.vmode .panel {
       position: fixed; top: 0; right: 0; bottom: 0; margin: 0; z-index: 4;
       width: min(380px, 94vw); max-width: none; overflow-y: auto;
@@ -137,7 +139,7 @@
     }
     .card-box h2 { margin: 0 0 6px; font-size: 15px; }
     .card-box p { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; }
-    .cardvis { display: flex; justify-content: center; padding: 14px 0 6px; overflow-x: auto; }
+    .cardvis { display: flex; justify-content: flex-start; padding: 14px 0 6px; overflow-x: auto; }
     .credit-card {
       position: relative; flex: 0 0 auto;
       border-radius: 10px; color: #fff;
@@ -391,6 +393,7 @@
       orientation = orientation === "horizontal" ? "vertical" : "horizontal";
       localStorage.setItem(LS_ORIENT, orientation);
       applyOrientation();
+      syncCalUI();
       draw();
     }
 
@@ -401,6 +404,10 @@
       cardVis.style.width = px + "px";
       cardVis.style.height = Math.round(px / (85.60 / 53.98)) + "px";
       calVal.textContent = `card ${px}px → ${Math.round(ppiFromCardPx(px))} DPI`;
+      // vertical drawer: widen to fit the (growing) card so dragging can't clip it
+      panel.style.width = document.body.classList.contains("vmode")
+        ? Math.min(Math.max(px + 84, 340), Math.round(innerWidth * 0.92)) + "px"
+        : "";
     }
 
     // ---- click a readout value to set it (calibrate by monitor spec) ----
