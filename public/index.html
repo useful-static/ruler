@@ -225,6 +225,7 @@
     const CARD_IN = CARD_MM / 25.4;        // 3.370 in
     const LS_KEY = "ruler.devppi.v1";     // stored calibration: DEVICE px per inch (zoom-invariant)
     const LS_EST = "ruler.devppi.est.v1"; // persisted auto-estimate (not a user calibration)
+    const LS_RES = "ruler.calres.v1";     // persisted native resolution (estimate or user-set)
     const LS_KEY_OLD = "ruler.ppi.v1";    // legacy: CSS px per inch (migrated on load)
     // Best default WITHOUT calibration, from each platform's own density baseline:
     // desktop CSS px ≈ 1/96 in, but touch platforms define CSS px as a dp/point
@@ -282,8 +283,16 @@
     let ppi = devPpi / dprNow();               // live CSS px per inch
     function refreshPpi() { ppi = devPpi / dprNow(); }
     let orientation = localStorage.getItem(LS_ORIENT) === "vertical" ? "vertical" : "horizontal";
-    // Native (device) resolution captured at load = true panel px, zoom-invariant.
-    let calRes = { w: Math.round(screen.width * dprNow()), h: Math.round(screen.height * dprNow()) };
+    // Native (device) resolution. screen×dpr is only exact at 100% zoom, so the
+    // estimate is PERSISTED like devPpi — a reload at a remembered per-site zoom
+    // must not multiply the native res by the zoom (1920×1080 → "9600×5400").
+    let calRes = null;
+    try { calRes = JSON.parse(localStorage.getItem(LS_RES)); } catch (e) { /* re-estimate */ }
+    if (!(calRes && calRes.w >= 100 && calRes.h >= 100 && calRes.w < 100000 && calRes.h < 100000)) {
+      calRes = { w: Math.round(screen.width * dprNow()), h: Math.round(screen.height * dprNow()) };
+      localStorage.setItem(LS_RES, JSON.stringify(calRes));
+    }
+    function saveCalRes() { localStorage.setItem(LS_RES, JSON.stringify(calRes)); }
 
     // Guard on the zoom-INVARIANT device-ppi (not the per-draw CSS-ppi). Wide range:
     // covers low-DPI TVs (~40) up to high-DPI phone panels (~1200), well past both.
@@ -542,7 +551,7 @@
       ], (vals) => {
         const w = parseInt(vals[0], 10), h = parseInt(vals[1], 10);
         if (w >= 100 && h >= 100 && w < 100000 && h < 100000) {
-          calRes = { w, h };
+          calRes = { w, h }; saveCalRes();
           devPpi = Math.hypot(calRes.w, calRes.h) / keepDiag;
           localStorage.setItem(LS_KEY, String(devPpi)); refreshPpi(); syncCalUI();
         }
@@ -565,6 +574,8 @@
       devPpi = DEFAULT_PPI * dprNow();          // re-estimate; assumes 100% zoom now
       localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_KEY_OLD);
       localStorage.setItem(LS_EST, String(devPpi));   // keep reloads consistent
+      calRes = { w: Math.round(screen.width * dprNow()), h: Math.round(screen.height * dprNow()) };
+      saveCalRes();
       refreshPpi(); syncCalUI(); draw();
     });
     toggle.addEventListener("click", () => {
