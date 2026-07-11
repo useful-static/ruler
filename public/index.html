@@ -554,10 +554,22 @@
 
     // ---- lifecycle ----
     let raf = 0;
-    const redraw = () => { applyPageZoom(); cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { draw(); syncCalUI(); }); };
+    // applyPageZoom runs INSIDE the rAF: resize can dispatch before
+    // devicePixelRatio settles, so the dpr read must be deferred, not
+    // taken synchronously in the event handler.
+    const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { applyPageZoom(); draw(); syncCalUI(); }); };
     window.addEventListener("resize", redraw);
     if (window.visualViewport) window.visualViewport.addEventListener("resize", redraw);
     if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", redraw);
+    // dpr change (browser zoom / moving to another monitor): the resolution
+    // media query flips exactly WHEN devicePixelRatio changes — re-arm each time
+    (function watchDpr() {
+      if (!window.matchMedia) return;
+      const mq = window.matchMedia(`(resolution: ${dprNow()}dppx)`);
+      const fire = () => { redraw(); watchDpr(); };
+      if (mq.addEventListener) mq.addEventListener("change", fire, { once: true });
+      else if (mq.addListener) mq.addListener(fire);
+    })();
 
     applyPageZoom();
     applyOrientation();
