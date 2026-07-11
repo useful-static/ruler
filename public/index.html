@@ -187,7 +187,6 @@
     const DEFAULT_PPI = 96;                // CSS reference: 96px = 1in
     const LS_KEY = "ruler.ppi.v1";
     const LS_ORIENT = "ruler.orient.v1";
-    const BASE_DPR = window.devicePixelRatio || 1;  // dpr at first paint (zoom baseline)
 
     const canvas   = document.getElementById("ruler");
     const ctx      = canvas.getContext("2d");
@@ -216,21 +215,25 @@
     function updateInfo() {
       const dpr = window.devicePixelRatio || 1;
       const sw = screen.width, sh = screen.height;
-      infoRes.textContent = `${sw} × ${sh} CSS px`
-        + (dpr !== 1 ? ` · ${Math.round(sw * dpr)} × ${Math.round(sh * dpr)} device px` : "");
 
-      // Browser gives no true zoom API: estimate from dpr vs first-paint dpr
-      // (desktop browser zoom) times visualViewport.scale (touch pinch-zoom).
-      const vv = window.visualViewport ? window.visualViewport.scale : 1;
-      const zoom = Math.round((dpr / BASE_DPR) * vv * 100);
-      infoZoom.textContent = `≈ ${zoom}%  ·  ${dpr.toFixed(2)}× device-pixel-ratio`;
+      // The browser only exposes the LOGICAL (CSS-pixel) screen size. Native
+      // panel px would be sw*dpr, but ONLY at 100% browser zoom (zoom inflates
+      // dpr), so we show the reliable logical value, not a guessed native one.
+      infoRes.textContent = `${sw} × ${sh} CSS px`;
 
-      // Physical size can only be derived from resolution ÷ calibrated PPI.
+      // No browser API exposes zoom: page zoom and OS display-scaling are fused
+      // into devicePixelRatio and can't be separated. Report the composite only.
+      infoZoom.innerHTML = `${dpr.toFixed(2)}× <span class="hint">(zoom × display-scale — browsers don't separate them)</span>`;
+
+      // Physical size is NOT detectable; it is resolution ÷ the calibrated PPI,
+      // so it is only correct once you calibrate.
       const calibrated = localStorage.getItem(LS_KEY) != null;
       const wIn = sw / ppi, hIn = sh / ppi;
       const diag = Math.hypot(wIn, hIn);
-      infoSize.innerHTML = `≈ ${(wIn * 2.54).toFixed(1)} × ${(hIn * 2.54).toFixed(1)} cm · ${diag.toFixed(1)}″ diagonal`
-        + (calibrated ? "" : ` <span class="hint">(assumes 96 dpi — calibrate for accuracy)</span>`);
+      infoSize.innerHTML = `≈ ${(wIn * 2.54).toFixed(1)} × ${(hIn * 2.54).toFixed(1)} cm · ${diag.toFixed(1)}″`
+        + (calibrated
+            ? ` <span class="hint">(calibrated)</span>`
+            : ` <span class="hint">— uncalibrated: a 96-dpi guess, calibrate to fix distances too</span>`);
     }
 
     // ---- draw the ruler (works along either axis) ----
