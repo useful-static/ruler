@@ -275,6 +275,16 @@
           devPpi = DEFAULT_PPI * dprNow();     // assumes this first visit is at 100%
           localStorage.setItem(LS_EST, String(devPpi));
         }
+        // Self-heal a zoom-poisoned estimate. OS display scale is ≥ 1, so an
+        // UNCALIBRATED devPpi can never legitimately exceed DEFAULT_PPI ×
+        // max(1, current dpr): if it does, the estimate was captured while
+        // zoomed IN — re-cap it (fully heals the first time the page is seen
+        // at 100%). A good estimate under a zoomed reload (dpr high) passes.
+        const cap = DEFAULT_PPI * Math.max(1, dprNow());
+        if (devPpi > cap * 1.01) {
+          devPpi = cap;
+          localStorage.setItem(LS_EST, String(devPpi));
+        }
       }
     }
     devPpi = clampDevPpi(devPpi);              // guard a corrupted stored value
@@ -291,6 +301,16 @@
     if (!(calRes && calRes.w >= 100 && calRes.h >= 100 && calRes.w < 100000 && calRes.h < 100000)) {
       calRes = { w: Math.round(screen.width * dprNow()), h: Math.round(screen.height * dprNow()) };
       localStorage.setItem(LS_RES, JSON.stringify(calRes));
+    }
+    // Self-heal a zoom-poisoned resolution ESTIMATE (never a user-typed one):
+    // native width can't exceed screen.width × a plausible OS scale (≤3).
+    if (!calRes.user) {
+      const capW = screen.width * Math.max(1, Math.min(dprNow(), 3));
+      if (calRes.w > capW * 1.01) {
+        calRes = { w: Math.round(screen.width * Math.max(1, dprNow())),
+                   h: Math.round(screen.height * Math.max(1, dprNow())) };
+        localStorage.setItem(LS_RES, JSON.stringify(calRes));
+      }
     }
     function saveCalRes() { localStorage.setItem(LS_RES, JSON.stringify(calRes)); }
 
@@ -555,7 +575,7 @@
       ], (vals) => {
         const w = parseInt(vals[0], 10), h = parseInt(vals[1], 10);
         if (w >= 100 && h >= 100 && w < 100000 && h < 100000) {
-          calRes = { w, h }; saveCalRes();
+          calRes = { w, h, user: true }; saveCalRes();   // user-typed: exempt from healing
           devPpi = Math.hypot(calRes.w, calRes.h) / keepDiag;
           localStorage.setItem(LS_KEY, String(devPpi)); refreshPpi(); syncCalUI();
         }
