@@ -83,6 +83,30 @@
       box-shadow: inset 8px 0 14px -12px rgba(0,0,0,.35), inset -8px 0 14px -12px rgba(0,0,0,.35);
     }
 
+    /* ---- vertical mode: ruler runs top→bottom; info left, calibration right ---- */
+    body.vmode .ruler-wrap.vertical {
+      position: fixed; top: 0; bottom: 0; left: 50%; transform: translateX(-50%);
+      z-index: 1; padding: 0;
+    }
+    body.vmode .ruler-wrap.vertical canvas#ruler { height: 100dvh; }
+    body.vmode header {
+      position: fixed; inset: 0 0 auto 0; z-index: 5;
+      background: transparent; pointer-events: none;   /* keep the ruler's top clickable */
+    }
+    body.vmode header h1, body.vmode header .ppi, body.vmode header button { pointer-events: auto; }
+    body.vmode .info {
+      position: fixed; left: clamp(10px, 2vw, 24px); top: 50%; transform: translateY(-50%);
+      z-index: 2; flex-direction: column; align-items: flex-start;
+      justify-content: center; gap: 12px; max-width: 42vw;
+    }
+    body.vmode .panel {
+      position: fixed; top: 0; right: 0; bottom: 0; margin: 0; z-index: 4;
+      width: min(380px, 94vw); max-width: none; overflow-y: auto;
+      background: var(--bg); border-left: 1px solid var(--border);
+      box-shadow: -8px 0 24px -12px rgba(0,0,0,.4);
+      padding: 56px clamp(12px, 2vw, 20px) 20px;   /* clear the floating header buttons */
+    }
+
     /* ---- detected-display info readout ---- */
     .info {
       display: flex; flex-wrap: wrap; justify-content: center;
@@ -359,6 +383,7 @@
     function applyOrientation() {
       const vertical = orientation === "vertical";
       wrap.classList.toggle("vertical", vertical);
+      document.body.classList.toggle("vmode", vertical);
       orientBtn.textContent = vertical ? "Horizontal" : "Vertical";
     }
 
