@@ -98,11 +98,12 @@
     .info .hint { color: var(--muted); }
     .info .hot { cursor: pointer; border-bottom: 1px dashed currentColor; }
     .info .hot:hover { color: var(--accent); }
-    .info input.editin {
+    .info .editin {
       font: inherit; color: var(--fg); background: var(--panel);
-      border: 1px solid var(--accent); border-radius: 5px; padding: 0 5px;
-      font-variant-numeric: tabular-nums; max-width: 12em;
+      border: 1px solid var(--accent); border-radius: 5px; padding: 0 4px;
+      font-variant-numeric: tabular-nums; max-width: 10em; margin: 0 1px;
     }
+    .info select.editin { padding: 1px 2px; }
 
     /* ---- calibration panel ---- */
     .panel { max-width: 720px; margin: 0 auto 20px; padding: 0 clamp(12px, 4vw, 28px); width: 100%; }
@@ -367,47 +368,80 @@
 
     // ---- click a readout value to set it (calibrate by monitor spec) ----
     let editingNow = false;
-    function inlineEdit(hotEl, current, commit) {
-      if (editingNow) return;
+    // fields: {value,size} -> text input · {options,value} -> select · {text} -> literal
+    function inlineEditFields(hotEl, fields, commit) {
+      if (editingNow) return null;
       editingNow = true;
-      const input = document.createElement("input");
-      input.type = "text"; input.className = "editin"; input.value = current;
-      input.size = Math.max(5, current.length + 1);
-      hotEl.replaceChildren(input);
-      input.focus(); input.select();
+      hotEl.replaceChildren();
+      const inputs = [];
+      fields.forEach((f) => {
+        if (f.text != null) { hotEl.append(document.createTextNode(f.text)); return; }
+        let el;
+        if (f.options) {
+          el = document.createElement("select");
+          f.options.forEach((o) => { const op = document.createElement("option"); op.value = o; op.textContent = o; el.appendChild(op); });
+          el.value = f.value;
+        } else {
+          el = document.createElement("input");
+          el.type = "text"; el.inputMode = "decimal"; el.value = f.value; el.size = f.size || 5;
+        }
+        el.className = "editin";
+        hotEl.appendChild(el);
+        inputs.push(el);
+      });
+      if (inputs[0]) { inputs[0].focus(); if (inputs[0].select) inputs[0].select(); }
       let done = false;
       const finish = (ok) => {
         if (done) return; done = true; editingNow = false;
-        if (ok) commit(input.value);
+        if (ok) commit(inputs.map((i) => i.value));
         draw();                                    // rebuilds the readout
       };
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); finish(true); }
-        else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+      inputs.forEach((el) => {
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); finish(true); }
+          else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+        });
+        el.addEventListener("click", (e) => e.stopPropagation());
+        // commit only when focus leaves the whole field group (not on tab between)
+        el.addEventListener("blur", () => setTimeout(() => {
+          if (!hotEl.contains(document.activeElement)) finish(true);
+        }, 0));
       });
-      input.addEventListener("blur", () => finish(true));
-      input.addEventListener("click", (e) => e.stopPropagation());
+      return inputs;
     }
     function cssDiagIn() {   // current physical diagonal in inches, from calRes + ppi
       const dpr = window.devicePixelRatio || 1;
       return Math.hypot(calRes.w / dpr, calRes.h / dpr) / ppi;
     }
     function editSize(hotEl) {
-      inlineEdit(hotEl, cssDiagIn().toFixed(1), (v) => {
-        const d = parseFloat(v);
+      const ins = inlineEditFields(hotEl, [
+        { value: cssDiagIn().toFixed(1), size: 5 },
+        { options: ["in", "cm"], value: "in" },
+        { text: " diagonal" },
+      ], (vals) => {
+        let d = parseFloat(vals[0]);
+        if (vals[1] === "cm") d /= 2.54;
         if (d > 0.3 && d < 400) {
           const dpr = window.devicePixelRatio || 1;
           ppi = clampPpi(Math.hypot(calRes.w / dpr, calRes.h / dpr) / d);
           localStorage.setItem(LS_KEY, String(ppi)); syncCalUI();
         }
       });
+      if (ins && ins[1]) ins[1].addEventListener("change", () => {   // live in <-> cm convert
+        const n = parseFloat(ins[0].value);
+        if (!isNaN(n)) ins[0].value = (ins[1].value === "cm" ? n * 2.54 : n / 2.54).toFixed(1);
+      });
     }
     function editRes(hotEl) {
       const keepDiag = cssDiagIn();                // preserve the physical size
-      inlineEdit(hotEl, `${calRes.w}x${calRes.h}`, (v) => {
-        const m = /^\s*(\d{2,6})\s*[x×*]\s*(\d{2,6})\s*$/.exec(v);
-        if (m) {
-          calRes = { w: +m[1], h: +m[2] };
+      inlineEditFields(hotEl, [
+        { value: String(calRes.w), size: 5 },
+        { text: " × " },
+        { value: String(calRes.h), size: 5 },
+      ], (vals) => {
+        const w = parseInt(vals[0], 10), h = parseInt(vals[1], 10);
+        if (w >= 100 && h >= 100 && w < 100000 && h < 100000) {
+          calRes = { w, h };
           const dpr = window.devicePixelRatio || 1;
           ppi = clampPpi(Math.hypot(calRes.w / dpr, calRes.h / dpr) / keepDiag);
           localStorage.setItem(LS_KEY, String(ppi)); syncCalUI();
