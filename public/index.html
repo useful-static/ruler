@@ -198,7 +198,7 @@
         <div class="credit-card" id="cardVis"><span>85.6 × 53.98 mm</span></div>
       </div>
       <div class="controls">
-        <input type="range" id="calSlider" min="150" max="1400" step="1">
+        <input type="range" id="calSlider" min="100" max="4000" step="1">
         <span class="val" id="calVal"></span>
       </div>
       <div class="row">
@@ -466,15 +466,19 @@
     }
 
     // ---- calibration UI ----
+    // The slider and readout work in DEVICE px (zoom-invariant, like devPpi);
+    // only the card's on-screen CSS size divides by the current dpr, so the
+    // card stays physically constant and the slider range works at any zoom.
     function syncCalUI() {
-      const px = Math.round(cardPxFromPpi(ppi));
-      slider.value = String(px);
-      cardVis.style.width = px + "px";
-      cardVis.style.height = Math.round(px / (85.60 / 53.98)) + "px";
-      calVal.textContent = `card ${px}px → ${Math.round(ppiFromCardPx(px))} DPI`;
+      const devPx = Math.round(cardPxFromPpi(devPpi));   // card width in device px
+      const cssPx = devPx / dprNow();                    // physically constant on screen
+      slider.value = String(devPx);
+      cardVis.style.width = cssPx.toFixed(1) + "px";
+      cardVis.style.height = (cssPx / (85.60 / 53.98)).toFixed(1) + "px";
+      calVal.textContent = `card ${devPx}px → ${Math.round(devPpi)} DPI`;
       // vertical drawer: widen to fit the (growing) card so dragging can't clip it
       panel.style.width = document.body.classList.contains("vmode")
-        ? Math.min(Math.max(px + 84, 340), Math.round(innerWidth * 0.92)) + "px"
+        ? Math.min(Math.max(Math.ceil(cssPx) + 84, 340), Math.round(innerWidth * 0.92)) + "px"
         : "";
     }
 
@@ -561,7 +565,7 @@
     infoRes.addEventListener("click", (e) => { const h = e.target.closest(".hot"); if (h) editRes(h); });
 
     slider.addEventListener("input", () => {
-      devPpi = ppiFromCardPx(parseFloat(slider.value)) * dprNow();   // card measured at current zoom
+      devPpi = ppiFromCardPx(parseFloat(slider.value));   // slider is in device px
       refreshPpi(); syncCalUI(); draw();
     });
     saveBtn.addEventListener("click", () => {
