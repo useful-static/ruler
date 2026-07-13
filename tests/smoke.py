@@ -345,6 +345,27 @@ def run(url):
         exp = math.hypot(412 * 3.5, 915 * 3.5) / 6.79
         check("S24 Ultra density from 6.79in diagonal",
               approx(t6f["devPpi"], exp, 2), f'{t6f["devPpi"]} vs {exp:.0f}')
+        # Tab S8 Ultra (SM-X906B): 14.6in panel at dpr 2, 924x1480 viewport
+        c.cmd("Emulation.setUserAgentOverride", {
+            "userAgent": "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36"
+                         " (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+            "userAgentMetadata": {
+                "brands": [{"brand": "Chromium", "version": "126"}],
+                "fullVersionList": [{"brand": "Chromium", "version": "126.0.0.0"}],
+                "platform": "Android", "platformVersion": "14",
+                "architecture": "", "model": "SM-X906B", "mobile": False,
+                "bitness": "", "wow64": False}})
+        c.cmd("Emulation.setDeviceMetricsOverride", {
+            "width": 924, "height": 1480, "deviceScaleFactor": 2, "mobile": True})
+        c.js("localStorage.clear()")
+        c.nav(url)
+        time.sleep(1.0)
+        t6g = c.dbg()
+        exp2 = math.hypot(924 * 2, 1480 * 2) / 14.6
+        check("Tab S8 Ultra density from 14.6in diagonal",
+              approx(t6g["devPpi"], exp2, 2), f'{t6g["devPpi"]} vs {exp2:.0f}')
+        check("detection surfaced in readout",
+              "SM-X906B" in c.js("document.getElementById('infoSize').textContent"))
         c.cmd("Emulation.clearDeviceMetricsOverride")
         c.cmd("Emulation.setTouchEmulationEnabled",
               {"enabled": False, "maxTouchPoints": 1})

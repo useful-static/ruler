@@ -289,7 +289,7 @@
     // class constant can fix.
     const DEVICE_DIAGONALS = [
       [/^SM-S928/, 6.79],           // Samsung Galaxy S24 Ultra
-      [/^SM-X90[06]/, 14.6],        // Samsung Galaxy Tab S8 Ultra
+      [/^SM-X9[012]\d/, 14.6],      // Samsung Galaxy Tab S8/S9/S10 Ultra (all 14.6″)
     ];
     async function deviceDiagonal() {
       try {
@@ -297,7 +297,7 @@
         if (!ua || !ua.getHighEntropyValues) return null;
         const { model } = await ua.getHighEntropyValues(["model"]);
         for (const [re, diag] of DEVICE_DIAGONALS)
-          if (model && re.test(model)) return diag;
+          if (model && re.test(model)) return { model, diag };
       } catch (e) { /* hint unavailable */ }
       return null;
     }
@@ -356,6 +356,7 @@
     // is persisted unless the USER calibrates — an estimate is recomputed
     // fresh on every load.
     let knownDiag = null;                      // set async from the UA-CH device table
+    let knownModel = null;
     function estimateDevPpi() {
       if (knownDiag) return clampDevPpi(Math.hypot(calRes.w, calRes.h) / knownDiag);
       return clampDevPpi(DEFAULT_PPI * osScaleOr1());
@@ -432,7 +433,8 @@
       infoSize.innerHTML = `<span class="hot" title="Click to set your screen's diagonal size (inches)">`
         + `≈ ${(wIn * 2.54).toFixed(1)} × ${(hIn * 2.54).toFixed(1)} cm · ${diag.toFixed(1)}″</span>`
         + (calibrated ? ` <span class="hint">calibrated · click to set</span>`
-                      : ` <span class="hint">auto-estimate · click to set or calibrate</span>`)
+           : knownDiag ? ` <span class="hint">${knownModel} matched (${knownDiag}″ panel) · click to set</span>`
+                       : ` <span class="hint">auto-estimate · click to set or calibrate</span>`)
         + ` · <span class="act" title="Discard the calibration and go back to the device-class auto-estimate">↺ reset</span>`;
     }
 
@@ -824,10 +826,11 @@
 
     // Known device (UA-CH model hint) → exact density from its panel diagonal.
     // Runs async after first paint; never overrides a user calibration.
-    deviceDiagonal().then((diag) => {
-      if (!diag) return;
-      knownDiag = diag;                        // session-only, never persisted
-      if (localStorage.getItem(LS_KEY) != null) return;   // user calibration wins
+    deviceDiagonal().then((hit) => {
+      if (!hit) return;
+      knownDiag = hit.diag;                    // session-only, never persisted
+      knownModel = hit.model;
+      if (localStorage.getItem(LS_KEY) != null) { updateInfo(); return; }   // user calibration wins
       devPpi = estimateDevPpi();
       refreshPpi(); syncCalUI(); draw();
     });
@@ -835,7 +838,7 @@
     // ---- test hook (read-only) — used by tests/smoke.py ----
     window.RULER_DEBUG = () => ({
       devPpi, ppi, dpr: dprNow(), defaultPpi: DEFAULT_PPI,
-      calRes: { ...calRes }, orientation,
+      calRes: { ...calRes }, orientation, knownDiag, knownModel,
       calibrated: localStorage.getItem(LS_KEY) != null,
       bandCss: { w: canvas.clientWidth, h: canvas.clientHeight },
       bandDev: { w: Math.round(canvas.clientWidth * dprNow()),
