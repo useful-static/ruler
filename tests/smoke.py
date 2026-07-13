@@ -314,6 +314,48 @@ def run(url):
         c.js("localStorage.clear()")
         c.nav(url)
 
+        print("T6c real-ruler cross-check calibrates")
+        c.js("localStorage.clear()")
+        c.nav(url)
+        base = c.dbg()["devPpi"]
+        c.js("document.getElementById('toggleCal').click();"
+             "document.getElementById('ckSite').value='30';"
+             "document.getElementById('ckReal').value='30.4';"
+             "document.getElementById('ckApply').click()")
+        t6e = c.dbg()
+        check("devPpi scaled by 30/30.4 and saved",
+              approx(t6e["devPpi"], base * 30 / 30.4, 0.5) and t6e["calibrated"],
+              f'{t6e["devPpi"]} vs {base * 30 / 30.4}')
+
+        print("T6d known device (UA-CH model) gets its exact panel density")
+        c.js("localStorage.clear()")
+        c.cmd("Emulation.setUserAgentOverride", {
+            "userAgent": "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36"
+                         " (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+            "userAgentMetadata": {
+                "brands": [{"brand": "Chromium", "version": "126"}],
+                "fullVersionList": [{"brand": "Chromium", "version": "126.0.0.0"}],
+                "platform": "Android", "platformVersion": "14",
+                "architecture": "", "model": "SM-S928B", "mobile": True,
+                "bitness": "", "wow64": False}})
+        c.cmd("Emulation.setTouchEmulationEnabled",
+              {"enabled": True, "maxTouchPoints": 5})
+        c.cmd("Emulation.setDeviceMetricsOverride", {
+            "width": 412, "height": 915, "deviceScaleFactor": 3.5, "mobile": True})
+        c.nav(url)
+        time.sleep(1.0)                              # async UA-CH lookup + redraw
+        t6f = c.dbg()
+        import math
+        exp = math.hypot(412 * 3.5, 915 * 3.5) / 6.79
+        check("S24 Ultra density from 6.79in diagonal",
+              approx(t6f["devPpi"], exp, 2), f'{t6f["devPpi"]} vs {exp:.0f}')
+        c.cmd("Emulation.clearDeviceMetricsOverride")
+        c.cmd("Emulation.setTouchEmulationEnabled",
+              {"enabled": False, "maxTouchPoints": 1})
+        c.cmd("Emulation.setUserAgentOverride", {"userAgent": ""})
+        c.js("localStorage.clear()")
+        c.nav(url)
+
         print("T7 fresh load at any zoom gives the same physical ruler")
         for dsf, w, h in [(5, 320, 180), (2, 800, 450), (0.5, 3200, 1800)]:
             c.js("localStorage.clear()")

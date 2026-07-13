@@ -19,12 +19,20 @@ serving a physically-accurate on-screen ruler at **ruler.free** and
 - **R3 — Default calibration by device class.** First visit assumes
   96 ppi on desktop (hover + fine pointer), 160 ppi on phones, 132 ppi on
   tablets (minimum screen side > 550 px).
-- **R4 — User calibration.** Three ways, all persisted in `localStorage`:
+- **R4 — User calibration.** Four ways, all persisted in `localStorage`:
   - drag a slider until the on-screen credit-card outline matches a real
     ISO 7810 card (85.60 mm);
   - click the DISPLAY SIZE readout and type the diagonal (inches or cm,
     with live unit conversion);
-  - click the RESOLUTION readout and type the native W × H (two boxes).
+  - click the RESOLUTION readout and type the native W × H (two boxes);
+  - real-ruler cross-check: type what the site's M cm mark measures on a
+    physical ruler — density is corrected by M/R.
+- **R4b — Known devices are exact without calibration.** Chrome's UA-CH
+  high-entropy `model` hint identifies the device; a small table maps
+  models to panel diagonals (mode-invariant), giving the true density as
+  `hypot(native res)/diagonal`. Never overrides a user calibration.
+  Currently: Galaxy S24 Ultra (SM-S928\*, 6.79″), Galaxy Tab S8 Ultra
+  (SM-X900/X906, 14.6″) — extend the table as devices are reported.
 - **R5 — Calibration is stored zoom-invariantly** as *device* px per inch
   (`devPpi`); the live CSS px/in is derived per frame as `devPpi / dpr`.
   Legacy CSS-ppi values are migrated on load. A stored value is sanity-

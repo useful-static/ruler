@@ -173,6 +173,12 @@
     }
     .controls { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
     .controls input[type=range] { flex: 1 1 220px; accent-color: var(--accent); }
+    .crosscheck { gap: 6px; }
+    .crosscheck .editin {
+      font: inherit; color: var(--fg); background: var(--panel);
+      border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px;
+      font-variant-numeric: tabular-nums;
+    }
     .controls .val { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
     details.help { margin-top: 14px; color: var(--muted); font-size: 13px; }
@@ -217,6 +223,14 @@
       <div class="row">
         <button class="primary" id="saveCal">Save</button>
         <button id="resetCal">↺ Reset all to auto-detected</button>
+      </div>
+      <div class="controls crosscheck">
+        <span class="val">Or cross-check with a real ruler: the site's</span>
+        <input id="ckSite" class="editin" size="3" value="10" inputmode="decimal">
+        <span class="val">cm mark measures</span>
+        <input id="ckReal" class="editin" size="4" inputmode="decimal" placeholder="10.2">
+        <span class="val">cm on a real ruler</span>
+        <button id="ckApply">Correct</button>
       </div>
       <p>Know your monitor's spec? Instead of the card, click the <strong>Resolution</strong>
          or <strong>Display size</strong> shown under the ruler and type your native resolution
@@ -267,6 +281,26 @@
       return /iPhone|iPod/.test(navigator.userAgent) ? 154 : 160;
     }
     const DEFAULT_PPI = autoDefaultPpi();
+    // Known-device panel diagonals (inches), matched via the UA-CH high-entropy
+    // "model" hint (Chrome on Android exposes it; the plain UA string redacts
+    // the model). The diagonal is resolution-mode-invariant, so the exact
+    // density is hypot(native res)/diagonal — no calibration needed. Android
+    // density buckets run up to ~13% high (these two measured +11%), which no
+    // class constant can fix.
+    const DEVICE_DIAGONALS = [
+      [/^SM-S928/, 6.79],           // Samsung Galaxy S24 Ultra
+      [/^SM-X90[06]/, 14.6],        // Samsung Galaxy Tab S8 Ultra
+    ];
+    async function deviceDiagonal() {
+      try {
+        const ua = navigator.userAgentData;
+        if (!ua || !ua.getHighEntropyValues) return null;
+        const { model } = await ua.getHighEntropyValues(["model"]);
+        for (const [re, diag] of DEVICE_DIAGONALS)
+          if (model && re.test(model)) return diag;
+      } catch (e) { /* hint unavailable */ }
+      return null;
+    }
     const LS_ORIENT = "ruler.orient.v1";
 
     const canvas   = document.getElementById("ruler");
@@ -755,6 +789,18 @@
       resetCalibration();
       resetResolution();
     });
+    // Real-ruler cross-check: if the site's M cm mark measures R real cm, the
+    // true density is devPpi × M/R — apply and save as a calibration.
+    document.getElementById("ckApply").addEventListener("click", () => {
+      const m = parseFloat(document.getElementById("ckSite").value);
+      const r = parseFloat(document.getElementById("ckReal").value);
+      if (m > 0 && r > 0 && m / r > 0.5 && m / r < 2) {
+        devPpi = clampDevPpi(devPpi * m / r);
+        localStorage.setItem(LS_KEY, String(devPpi));
+        refreshPpi(); syncCalUI(); draw();
+        document.getElementById("ckReal").value = "";
+      }
+    });
     toggle.addEventListener("click", () => {
       panel.hidden = !panel.hidden;
       if (!panel.hidden) { syncCalUI(); panel.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
@@ -783,6 +829,15 @@
     applyOrientation();
     syncCalUI();
     draw();
+
+    // Known device (UA-CH model hint) → exact density from its panel diagonal.
+    // Runs async after first paint; never overrides a user calibration.
+    deviceDiagonal().then((diag) => {
+      if (!diag || localStorage.getItem(LS_KEY) != null) return;
+      devPpi = clampDevPpi(Math.hypot(calRes.w, calRes.h) / diag);
+      localStorage.setItem(LS_EST, String(devPpi));
+      refreshPpi(); syncCalUI(); draw();
+    });
 
     // ---- test hook (read-only) — used by tests/smoke.py ----
     window.RULER_DEBUG = () => ({
