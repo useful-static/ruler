@@ -259,7 +259,12 @@
         && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
       if (desktop) return 96;                                  // desktop / laptop
       const minSide = Math.min(screen.width || 9999, screen.height || 9999);
-      return minSide > 550 ? 132 : 160;                        // tablet : phone
+      if (minSide > 550) return 132;                           // tablet (iPad: exact)
+      // Phones. iPhones run ~153 logical px/in (e.g. 460 dpi ÷ 3×), below the
+      // 160 dp nominal. Android keeps 160: vendors round their density bucket
+      // anywhere from honest (Pixel ≈163) to ~13% high (many Samsungs) — no
+      // constant fits all; the card calibration is the exact path.
+      return /iPhone|iPod/.test(navigator.userAgent) ? 154 : 160;
     }
     const DEFAULT_PPI = autoDefaultPpi();
     const LS_ORIENT = "ruler.orient.v1";
@@ -289,6 +294,10 @@
     const ZOOM_LEVELS = [0.25, 1 / 3, 0.5, 2 / 3, 0.75, 0.8, 0.9, 1,
                          1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
     function zoomFactorEst() {
+      // Touch devices: browser zoom doesn't reach devicePixelRatio there, and
+      // outerWidth is unreliable (Android Chrome has reported it in device
+      // px) — a misfired snap (e.g. 0.9) would inflate the estimate ~11%.
+      if (window.matchMedia && matchMedia("(pointer: coarse)").matches) return 1;
       if (!(outerWidth > 0 && innerWidth > 0)) return null;
       const r = outerWidth / innerWidth;
       let best = null, err = 0.06;               // 6% tolerance

@@ -284,6 +284,36 @@ def run(url):
         check("↺ redetect restores detected res",
               t6d["calRes"]["w"] == c.js("screen.width"), str(t6d["calRes"]))
 
+        print("T6b calculation exactness: drawn scale == devPpi to <0.1%")
+        c.js("localStorage.clear()")
+        c.nav(url)
+        calc = json.loads(c.js(
+            "(() => { const d = RULER_DEBUG();"
+            " return JSON.stringify({"
+            "  ppi: d.ppi, devPpi: d.devPpi, dpr: d.dpr,"
+            "  cmDev: d.ppi / 2.54 * d.dpr,"          # drawn cm in device px
+            "  trueCmDev: d.devPpi / 2.54 }); })()"))
+        check("1 drawn cm == devPpi/2.54 device px (no scale drift)",
+              approx(calc["cmDev"], calc["trueCmDev"], calc["trueCmDev"] * 0.001),
+              json.dumps(calc))
+        # touch devices must not engage the outer/inner zoom snap (a misfired
+        # 0.9 snap would inflate the estimate ~11%)
+        c.cmd("Emulation.setTouchEmulationEnabled",
+              {"enabled": True, "maxTouchPoints": 5})
+        c.cmd("Emulation.setDeviceMetricsOverride", {
+            "width": 393, "height": 852, "deviceScaleFactor": 3, "mobile": True})
+        c.js("localStorage.clear()")
+        c.nav(url)
+        tt = c.dbg()
+        check("touch: estimate == default × dpr exactly (zoom snap pinned to 1)",
+              approx(tt["devPpi"], tt["defaultPpi"] * 3, 0.5),
+              json.dumps({"devPpi": tt["devPpi"], "default": tt["defaultPpi"]}))
+        c.cmd("Emulation.clearDeviceMetricsOverride")
+        c.cmd("Emulation.setTouchEmulationEnabled",
+              {"enabled": False, "maxTouchPoints": 1})
+        c.js("localStorage.clear()")
+        c.nav(url)
+
         print("T7 fresh load at any zoom gives the same physical ruler")
         for dsf, w, h in [(5, 320, 180), (2, 800, 450), (0.5, 3200, 1800)]:
             c.js("localStorage.clear()")
