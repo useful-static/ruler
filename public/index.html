@@ -97,7 +97,8 @@
     }
     body.vmode header h1, body.vmode header .ppi, body.vmode header button { pointer-events: auto; }
     body.vmode .info {
-      position: fixed; left: clamp(10px, 2vw, 24px); right: calc(50% + 130px);
+      position: fixed; left: clamp(10px, 2vw, 24px);
+      right: calc(50% + var(--vband, 220px) / 2 + 16px);   /* clear the band, whatever its width */
       top: 50%; transform: translateY(-50%);
       z-index: 2; flex-direction: column; align-items: flex-start;
       justify-content: center; gap: 12px;
@@ -134,6 +135,16 @@
       font-variant-numeric: tabular-nums; max-width: 10em; margin: 0 1px;
     }
     .info select.editin { padding: 1px 2px; }
+    /* narrow screens: let the readout lines wrap instead of clipping, and in
+       vertical mode drop the side info column (no room beside the ruler —
+       everything it shows is also in the Calibrate drawer) */
+    @media (max-width: 640px) {
+      .info > div { white-space: normal; }
+      body.vmode .info { display: none; }
+      /* start the band below the header so the buttons can't cover the scale */
+      body.vmode .ruler-wrap.vertical { top: 118px; }
+      body.vmode .ruler-wrap.vertical canvas#ruler { height: calc(100dvh - 136px); }
+    }
 
     /* ---- calibration panel ---- */
     .panel { max-width: 720px; margin: 0 auto 20px; padding: 0 clamp(12px, 4vw, 28px); width: 100%; }
@@ -465,10 +476,22 @@
     // zooms normally.
     function draw() {
       refreshPpi();
-      const k = Math.min(4, Math.max(0.1, ppi / 96));   // chrome scale (physical)
+      let k = Math.min(4, Math.max(0.1, ppi / 96));     // chrome scale (physical)
       const horizontal = orientation === "horizontal";
-      if (horizontal) { canvas.style.height = Math.round(160 * k) + "px"; canvas.style.width = ""; }
-      else            { canvas.style.width = Math.round(220 * k) + "px"; canvas.style.height = ""; }
+      // On small screens (phones) the physically-sized band would swallow the
+      // page — cap the band's depth to a fraction of the viewport and scale
+      // the chrome down with it. Measurements (tick spacing) are unaffected.
+      const doc = document.documentElement;
+      if (horizontal) {
+        const d = Math.min(160 * k, doc.clientHeight * 0.40);
+        k = d / 160;
+        canvas.style.height = Math.round(d) + "px"; canvas.style.width = "";
+      } else {
+        const d = Math.min(220 * k, doc.clientWidth * 0.50);
+        k = d / 220;
+        canvas.style.width = Math.round(d) + "px"; canvas.style.height = "";
+        document.body.style.setProperty("--vband", Math.round(d) + "px");
+      }
       // edge chrome stays physically constant too
       const radius = (16 * k).toFixed(1) + "px";
       wrap.style.borderRadius = radius;          // horizontal: the wrap carries the radius
@@ -562,9 +585,13 @@
       ctx.fillStyle = ink;
       if (horizontal) {
         ctx.textBaseline = "middle";
-        // sit on the same line as the numbers (tick length 34 + 8 offset)
-        ctx.textAlign = "left";  label("cm", 4 * k, 42 * k);
-        ctx.textAlign = "right"; label("in", cssW - 4 * k, cssH - 42 * k);
+        // on the numbers' line when the run-out has room for them (desktop);
+        // on their own line just past it when it doesn't (narrow screens),
+        // so they can never collide with the first/last number
+        const uw = ctx.measureText("cm").width / dpr;   // device → css px
+        const uy = end >= uw + 6 * k ? 42 * k : 58 * k;
+        ctx.textAlign = "left";  label("cm", 4 * k, uy);
+        ctx.textAlign = "right"; label("in", cssW - 4 * k, cssH - uy);
       } else {
         ctx.textBaseline = "top";
         ctx.textAlign = "right"; label("cm", depth / 2 - 6 * k, 10 * k);
