@@ -262,7 +262,7 @@
       localStorage.setItem(LS_SCHEMA, SCHEMA);
     }
     const LS_KEY = "ruler.devppi.v2";     // user calibration: DEVICE px per inch (zoom-invariant)
-    const LS_EST = "ruler.devppi.est.v2"; // persisted auto-estimate (not a user calibration)
+    const LS_EST = "ruler.devppi.est.v2"; // RETIRED: estimates are session-only now (key removed at load)
     const LS_RES = "ruler.calres.v2";     // native resolution (estimate, or user-set with user:true)
     // Best default WITHOUT calibration, from each platform's own density baseline:
     // desktop CSS px ≈ 1/96 in, but touch platforms define CSS px as a dp/point
@@ -352,18 +352,15 @@
     // recomputed on every draw, so zoom never changes what the ruler measures.
     // Best OS-scale guess (≥ 1): zoom-detected when possible, else raw dpr.
     const osScaleOr1 = () => osScaleEst() || Math.max(1, dprNow());
-    // Zoom-independent auto-estimate of the device ppi, refreshed every load.
-    // When the zoom factor is unreadable, fall back to the persisted
-    // last-known-good estimate, then apply the OS-scale-≥1 backstop bounds.
+    // Zoom-independent auto-estimate of the device ppi. SESSION-ONLY: nothing
+    // is persisted unless the USER calibrates — an estimate is recomputed
+    // fresh on every load.
+    let knownDiag = null;                      // set async from the UA-CH device table
     function estimateDevPpi() {
-      const os = osScaleEst();
-      let v = os ? DEFAULT_PPI * os : parseFloat(localStorage.getItem(LS_EST));
-      if (!(v > 0)) v = DEFAULT_PPI * Math.max(1, dprNow());
-      const cap = DEFAULT_PPI * Math.max(1, dprNow());
-      if (v > cap * 1.01 || v < DEFAULT_PPI * 0.99) v = DEFAULT_PPI * (os || 1);
-      localStorage.setItem(LS_EST, String(v));
-      return v;
+      if (knownDiag) return clampDevPpi(Math.hypot(calRes.w, calRes.h) / knownDiag);
+      return clampDevPpi(DEFAULT_PPI * osScaleOr1());
     }
+    localStorage.removeItem(LS_EST);           // retired: estimates no longer persist
     let devPpi = parseFloat(localStorage.getItem(LS_KEY));
     // A stored CALIBRATION can still be corrupt (written against a broken
     // state). No real panel exceeds ~500 CSS px/in at 100% zoom, so a value
@@ -379,10 +376,8 @@
     let ppi = devPpi / dprNow();               // live CSS px per inch
     function refreshPpi() { ppi = devPpi / dprNow(); }
     let orientation = localStorage.getItem(LS_ORIENT) === "vertical" ? "vertical" : "horizontal";
-    // Native (device) resolution = screen × OS-scale, same estimation rules as
-    // devPpi: zoom-independent when the zoom factor is readable, persisted
-    // fallback otherwise, plausibility bounds as backstop. User-typed values
-    // (user:true) are exempt.
+    // Native (device) resolution = screen × OS-scale, session-only like the
+    // ppi estimate. Only a USER-TYPED resolution ({user:true}) is persisted.
     function saveCalRes() { localStorage.setItem(LS_RES, JSON.stringify(calRes)); }
     function estimateRes() {
       const d = osScaleOr1();
@@ -390,16 +385,10 @@
     }
     let calRes = null;
     try { calRes = JSON.parse(localStorage.getItem(LS_RES)); } catch (e) { /* re-estimate */ }
-    if (!(calRes && calRes.w >= 100 && calRes.h >= 100 && calRes.w < 100000 && calRes.h < 100000)) {
-      calRes = null;
-    }
-    if (!(calRes && calRes.user)) {
-      if (osScaleEst() || !calRes) { calRes = estimateRes(); saveCalRes(); }
-      // backstop: native width sits in [screen, screen × plausible OS scale (≤3)]
-      const capW = screen.width * Math.max(1, Math.min(dprNow(), 3));
-      if (calRes.w > capW * 1.01 || calRes.w < screen.width * 0.99) {
-        calRes = estimateRes(); saveCalRes();
-      }
+    if (!(calRes && calRes.user
+          && calRes.w >= 100 && calRes.h >= 100 && calRes.w < 100000 && calRes.h < 100000)) {
+      if (calRes) localStorage.removeItem(LS_RES);   // stored estimate from an older build
+      calRes = estimateRes();
     }
 
     // Guard on the zoom-INVARIANT device-ppi (not the per-draw CSS-ppi). Wide range:
@@ -757,9 +746,12 @@
       });
     }
     // ---- resets: every auto-detected value has a labelled ↺ clickable ----
+    // A reset FORGETS the stored user value (back to session estimates);
+    // it never persists anything itself.
     function resetResolution() {                 // redetect native res, zoom factored out
+      localStorage.removeItem(LS_RES);
       calRes = estimateRes();
-      saveCalRes(); syncCalUI(); draw();
+      syncCalUI(); draw();
     }
     function resetCalibration() {                // back to the device-class estimate
       localStorage.removeItem(LS_KEY);
@@ -833,9 +825,10 @@
     // Known device (UA-CH model hint) → exact density from its panel diagonal.
     // Runs async after first paint; never overrides a user calibration.
     deviceDiagonal().then((diag) => {
-      if (!diag || localStorage.getItem(LS_KEY) != null) return;
-      devPpi = clampDevPpi(Math.hypot(calRes.w, calRes.h) / diag);
-      localStorage.setItem(LS_EST, String(devPpi));
+      if (!diag) return;
+      knownDiag = diag;                        // session-only, never persisted
+      if (localStorage.getItem(LS_KEY) != null) return;   // user calibration wins
+      devPpi = estimateDevPpi();
       refreshPpi(); syncCalUI(); draw();
     });
 

@@ -196,8 +196,9 @@ def run(url):
               approx(t1["bandCss"]["h"], round(160 * k1), 2), str(t1["bandCss"]))
         check("band spans ~95% of viewport",
               approx(t1["bandCss"]["w"], 0.95 * c.js("innerWidth"), 30))
-        check("estimate persisted",
-              c.js("localStorage.getItem('ruler.devppi.est.v2')") is not None)
+        check("nothing persisted without user action",
+              c.js("Object.keys(localStorage).filter(k =>"
+                   " k.startsWith('ruler.') && k !== 'ruler.schema').length") == 0)
         check("number labels drawn", label_ink(c) > 100)
 
         print("T2 zoom to 500% after load (dynamic tracking)")
@@ -212,7 +213,7 @@ def run(url):
               approx(t2["bandDev"]["h"], t1["bandDev"]["h"], 10))
         check("labels still drawn zoomed", label_ink(c) > 100)
 
-        print("T3 reload while zoomed (persisted estimate)")
+        print("T3 reload while zoomed (zoom-independent estimate)")
         c.nav(url)
         t3 = c.dbg()
         check("state identical to pre-reload",
@@ -228,24 +229,19 @@ def run(url):
               approx(t4["ppi"], t1["ppi"], 0.5) and
               t4["bandCss"] == t1["bandCss"], json.dumps(t4))
 
-        print("T5 poisoned estimates self-heal at 100%")
+        print("T5 stale stored estimates are discarded at load")
         c.js("localStorage.clear();"
              "localStorage.setItem('ruler.devppi.est.v2','660');"
              "localStorage.setItem('ruler.calres.v2','{\"w\":6400,\"h\":3600}')")
         c.nav(url)
         t5 = c.dbg()
-        check("high estimate healed", approx(t5["devPpi"], t5["defaultPpi"], 0.5),
-              str(t5["devPpi"]))
-        check("high native res healed",
+        check("stored estimate ignored (fresh default)",
+              approx(t5["devPpi"], t5["defaultPpi"], 0.5), str(t5["devPpi"]))
+        check("stored res estimate ignored (fresh detect)",
               t5["calRes"]["w"] == c.js("screen.width"), str(t5["calRes"]))
-        c.js("localStorage.setItem('ruler.devppi.est.v2','24');"
-             "localStorage.setItem('ruler.calres.v2','{\"w\":200,\"h\":150}')")
-        c.nav(url)
-        t5b = c.dbg()
-        check("low estimate healed", approx(t5b["devPpi"], t5b["defaultPpi"], 0.5),
-              str(t5b["devPpi"]))
-        check("low native res healed",
-              t5b["calRes"]["w"] == c.js("screen.width"), str(t5b["calRes"]))
+        check("both stale keys deleted",
+              c.js("localStorage.getItem('ruler.devppi.est.v2')") is None and
+              c.js("localStorage.getItem('ruler.calres.v2')") is None)
         c.js("localStorage.clear();"
              "localStorage.setItem('ruler.devppi.v2','2000')")   # impossible calibration
         c.nav(url)

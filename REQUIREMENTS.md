@@ -77,6 +77,12 @@ serving a physically-accurate on-screen ruler at **ruler.free** and
   keys once on the next visit, so browsers carrying stale data from
   previous versions self-clean. Stored calibrations are additionally
   sanity-checked at load (impossible values are discarded).
+- **R8e — Nothing persists without a user action.** Auto-estimates (ppi,
+  native resolution, device-table density) are session-only and
+  recomputed on every load; `localStorage` holds only what the user
+  explicitly set (calibration, typed resolution, orientation) plus the
+  schema stamp. Resets *delete* the stored value rather than writing a
+  new one.
 - **R9 — Adaptive label decimation.** When marks crowd (zoomed out, small
   ruler, low ppi), number labels thin to a logical step — cm from
   {1, 2, 5, 10, 20, 50, …}, inches from {1, 2, 3, 6, 12, 24, …} — chosen as
