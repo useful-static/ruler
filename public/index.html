@@ -215,18 +215,27 @@
       <canvas id="ruler"></canvas>
     </div>
     <section class="info" aria-label="Detected display">
+      <div><span class="k">Display size</span><span class="v" id="infoSize">—</span></div>
       <div><span class="k">Resolution</span><span class="v" id="infoRes">—</span></div>
       <div><span class="k">Zoom</span><span class="v" id="infoZoom">—</span></div>
-      <div><span class="k">Display size</span><span class="v" id="infoSize">—</span></div>
     </section>
   </main>
 
   <section class="panel" id="calPanel" hidden>
     <div class="card-box">
       <h2>Calibrate to your screen</h2>
-      <p>Hold a standard bank/ID card flat against the screen and drag the slider until
-         the on-screen card is <em>exactly</em> the same width. That teaches the ruler your
-         display's true size. It's saved on this device.</p>
+      <p>The one number that matters is your <strong>display's physical size</strong> —
+         set it directly if you know it (it's printed on the box, or in your monitor's
+         model number). It's saved on this device.</p>
+      <div class="controls crosscheck">
+        <span class="val">Display size:</span>
+        <input id="diagIn" class="editin" size="5" inputmode="decimal">
+        <select id="diagUnit" class="editin"><option>in</option><option>cm</option></select>
+        <span class="val">diagonal</span>
+        <button class="primary" id="diagApply">Set</button>
+      </div>
+      <p>Don't know it? Hold a standard bank/ID card flat against the screen and drag
+         the slider until the on-screen card is <em>exactly</em> the same width.</p>
       <div class="cardvis">
         <div class="credit-card" id="cardVis"><span>85.6 × 53.98 mm</span></div>
       </div>
@@ -814,6 +823,22 @@
       resetCalibration();
       resetResolution();
     });
+    // Display-size (diagonal) entry — the major tunable, first in the panel.
+    const diagIn = document.getElementById("diagIn");
+    const diagUnit = document.getElementById("diagUnit");
+    function syncDiagInput() {
+      diagIn.value = (diagUnit.value === "cm" ? physDiagIn() * 2.54 : physDiagIn()).toFixed(1);
+    }
+    diagUnit.addEventListener("change", syncDiagInput);
+    document.getElementById("diagApply").addEventListener("click", () => {
+      let d = parseFloat(diagIn.value);
+      if (diagUnit.value === "cm") d /= 2.54;
+      if (d > 0.3 && d < 400) {
+        devPpi = clampDevPpi(Math.hypot(calRes.w, calRes.h) / d);
+        localStorage.setItem(LS_KEY, String(devPpi));
+        refreshPpi(); syncCalUI(); draw();
+      }
+    });
     // Real-ruler cross-check: if the site's M cm mark measures R real cm, the
     // true density is devPpi × M/R — apply and save as a calibration.
     document.getElementById("ckApply").addEventListener("click", () => {
@@ -828,11 +853,11 @@
     });
     toggle.addEventListener("click", () => {
       panel.hidden = !panel.hidden;
-      if (!panel.hidden) { syncCalUI(); panel.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+      if (!panel.hidden) { syncCalUI(); syncDiagInput(); panel.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
     });
     document.getElementById("accBadge").addEventListener("click", () => {
       panel.hidden = false;
-      syncCalUI(); panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      syncCalUI(); syncDiagInput(); panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     orientBtn.addEventListener("click", toggleOrientation);
     canvas.addEventListener("click", toggleOrientation);   // click the ruler to rotate

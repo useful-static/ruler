@@ -317,6 +317,22 @@ def run(url):
         c.js("localStorage.clear()")
         c.nav(url)
 
+        print("T6b2 panel diagonal entry calibrates (major tunable, first)")
+        c.js("localStorage.clear()")
+        c.nav(url)
+        c.js("document.getElementById('toggleCal').click();"
+             "document.getElementById('diagIn').value='11.6';"
+             "document.getElementById('diagApply').click()")
+        t6d2 = c.dbg()
+        import math as _m
+        exp_d = _m.hypot(t6d2["calRes"]["w"], t6d2["calRes"]["h"]) / 11.6
+        check("devPpi == hypot(native)/diagonal and saved",
+              approx(t6d2["devPpi"], exp_d, 1) and t6d2["calibrated"],
+              f'{t6d2["devPpi"]} vs {exp_d:.0f}')
+        check("display size listed first in readouts",
+              c.js("document.querySelector('.info div .k').textContent")
+              == "Display size")
+
         print("T6c real-ruler cross-check calibrates")
         c.js("localStorage.clear()")
         c.nav(url)
