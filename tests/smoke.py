@@ -200,6 +200,10 @@ def run(url):
               c.js("Object.keys(localStorage).filter(k =>"
                    " k.startsWith('ruler.') && k !== 'ruler.schema').length") == 0)
         check("number labels drawn", label_ink(c) > 100)
+        check("uncalibrated warning badge shown",
+              "not calibrated" in c.js(
+                  "document.getElementById('accBadge').textContent") and
+              not c.js("document.getElementById('accBadge').hidden"))
 
         print("T2 zoom to 500% after load (dynamic tracking)")
         c.zoom(5, 320, 180)
@@ -260,6 +264,9 @@ def run(url):
         check("slider calibrates (600 dev px card)",
               approx(t6["devPpi"], 600 / 3.3701, 1) and t6["calibrated"],
               str(t6["devPpi"]))
+        check("badge flips to calibrated",
+              "calibrated" in c.js("document.getElementById('accBadge').textContent")
+              and "not" not in c.js("document.getElementById('accBadge').textContent"))
         c.js("document.querySelector('#infoSize .act').click()")
         t6b = c.dbg()
         check("↺ reset restores the estimate",
@@ -366,6 +373,8 @@ def run(url):
               approx(t6g["devPpi"], exp2, 2), f'{t6g["devPpi"]} vs {exp2:.0f}')
         check("detection surfaced in readout",
               "SM-X906B" in c.js("document.getElementById('infoSize').textContent"))
+        check("badge shows matched device",
+              "SM-X906B" in c.js("document.getElementById('accBadge').textContent"))
         c.cmd("Emulation.clearDeviceMetricsOverride")
         c.cmd("Emulation.setTouchEmulationEnabled",
               {"enabled": False, "maxTouchPoints": 1})

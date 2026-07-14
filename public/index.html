@@ -53,6 +53,19 @@
     button:hover { border-color: var(--muted); }
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+    /* ---- accuracy state badge: loud when the size is an unverified guess ---- */
+    .accuracy { font-size: 13px; border-radius: 999px; padding: 6px 12px; }
+    .accuracy.warn {
+      background: var(--accent); border-color: var(--accent); color: #fff;
+      font-weight: 600;
+      animation: acc-pulse 2.4s ease-in-out 3;
+    }
+    .accuracy.matched { background: transparent; color: var(--muted); }
+    .accuracy.ok { background: transparent; color: #3f9d58; border-color: #3f9d58; }
+    @keyframes acc-pulse {
+      50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); }
+    }
+
     /* ---- stage: vertically centers the ruler on the screen ---- */
     .stage {
       flex: 1 1 auto; min-height: 0;
@@ -191,6 +204,7 @@
   <header>
     <h1>📏 Ruler</h1>
     <span class="ppi" id="ppiReadout"></span>
+    <button class="accuracy" id="accBadge" hidden></button>
     <span class="spacer"></span>
     <button id="toggleOrient">Vertical</button>
     <button id="toggleCal">Calibrate</button>
@@ -436,6 +450,23 @@
            : knownDiag ? ` <span class="hint">${knownModel} matched (${knownDiag}″ panel) · click to set</span>`
                        : ` <span class="hint">auto-estimate · click to set or calibrate</span>`)
         + ` · <span class="act" title="Discard the calibration and go back to the device-class auto-estimate">↺ reset</span>`;
+
+      // accuracy badge: prominent when the scale is an unverified estimate
+      const acc = document.getElementById("accBadge");
+      acc.hidden = false;
+      if (calibrated) {
+        acc.className = "accuracy ok";
+        acc.textContent = "✓ calibrated";
+        acc.title = "You calibrated this display — the scale is exact.";
+      } else if (knownDiag) {
+        acc.className = "accuracy matched";
+        acc.textContent = `✓ ${knownModel} (${knownDiag}″)`;
+        acc.title = "Display identified — the scale uses its known panel size. Calibrate to fine-tune.";
+      } else {
+        acc.className = "accuracy warn";
+        acc.textContent = "⚠ not calibrated — sizes may be off ±10%";
+        acc.title = "The browser can't read your display's physical size. Tap to calibrate.";
+      }
     }
 
     // ---- wood-grain texture (procedural, seeded → identical on every draw) ----
@@ -798,6 +829,10 @@
     toggle.addEventListener("click", () => {
       panel.hidden = !panel.hidden;
       if (!panel.hidden) { syncCalUI(); panel.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+    });
+    document.getElementById("accBadge").addEventListener("click", () => {
+      panel.hidden = false;
+      syncCalUI(); panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     orientBtn.addEventListener("click", toggleOrientation);
     canvas.addEventListener("click", toggleOrientation);   // click the ruler to rotate
