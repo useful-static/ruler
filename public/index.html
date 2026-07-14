@@ -186,6 +186,12 @@
     }
     .controls { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
     .controls input[type=range] { flex: 1 1 220px; accent-color: var(--accent); }
+    .choice { margin-top: 4px; }
+    .choicebtn {
+      flex: 1 1 200px; padding: 14px 12px; font-size: 15px;
+      border-radius: 10px;
+    }
+    .choicebtn.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
     .crosscheck { gap: 6px; }
     .crosscheck .editin {
       font: inherit; color: var(--fg); background: var(--panel);
@@ -224,46 +230,59 @@
   <section class="panel" id="calPanel" hidden>
     <div class="card-box">
       <h2>Calibrate to your screen</h2>
-      <p>The one number that matters is your <strong>display's physical size</strong> —
-         set it directly if you know it (it's printed on the box, or in your monitor's
-         model number). It's saved on this device.</p>
-      <div class="controls crosscheck">
-        <span class="val">Display size:</span>
-        <input id="diagIn" class="editin" size="5" inputmode="decimal">
-        <select id="diagUnit" class="editin"><option>in</option><option>cm</option></select>
-        <span class="val">diagonal</span>
-        <button class="primary" id="diagApply">Set</button>
+      <div class="row choice">
+        <button class="choicebtn" id="chooseSize">📐 I know my display size</button>
+        <button class="choicebtn" id="chooseCard">💳 Match a bank card</button>
       </div>
-      <p>Don't know it? Hold a standard bank/ID card flat against the screen and drag
-         the slider until the on-screen card is <em>exactly</em> the same width.</p>
-      <div class="cardvis">
-        <div class="credit-card" id="cardVis"><span>85.6 × 53.98 mm</span></div>
+
+      <div id="calSize" hidden>
+        <p>Your display's diagonal is printed on its box or in the model name
+           (e.g. a 24″ monitor, a 14.6″ tablet). One number calibrates exactly.</p>
+        <div class="controls crosscheck">
+          <span class="val">Display size:</span>
+          <input id="diagIn" class="editin" size="5" inputmode="decimal">
+          <select id="diagUnit" class="editin"><option>in</option><option>cm</option></select>
+          <span class="val">diagonal</span>
+          <button class="primary" id="diagApply">Set</button>
+        </div>
       </div>
-      <div class="controls">
-        <input type="range" id="calSlider" min="100" max="4000" step="1">
-        <span class="val" id="calVal"></span>
+
+      <div id="calCard" hidden>
+        <p>Hold a standard bank/ID card flat against the screen and drag the slider
+           until the on-screen card is <em>exactly</em> the same width, then Save.</p>
+        <div class="cardvis">
+          <div class="credit-card" id="cardVis"><span>85.6 × 53.98 mm</span></div>
+        </div>
+        <div class="controls">
+          <input type="range" id="calSlider" min="100" max="4000" step="1">
+          <span class="val" id="calVal"></span>
+        </div>
+        <div class="row">
+          <button class="primary" id="saveCal">Save</button>
+        </div>
       </div>
+
       <div class="row">
-        <button class="primary" id="saveCal">Save</button>
         <button id="resetCal">↺ Reset all to auto-detected</button>
       </div>
-      <div class="controls crosscheck">
-        <span class="val">Or cross-check with a real ruler: the site's</span>
-        <input id="ckSite" class="editin" size="3" value="10" inputmode="decimal">
-        <span class="val">cm mark measures</span>
-        <input id="ckReal" class="editin" size="4" inputmode="decimal" placeholder="10.2">
-        <span class="val">cm on a real ruler</span>
-        <button id="ckApply">Correct</button>
-      </div>
-      <p>Know your monitor's spec? Instead of the card, click the <strong>Resolution</strong>
-         or <strong>Display size</strong> shown under the ruler and type your native resolution
-         (e.g. 2560×1440) or diagonal size (e.g. 24 in) — either one calibrates it.</p>
+      <details class="help">
+        <summary>Fine-tune with a real ruler</summary>
+        <div class="controls crosscheck">
+          <span class="val">The site's</span>
+          <input id="ckSite" class="editin" size="3" value="10" inputmode="decimal">
+          <span class="val">cm mark measures</span>
+          <input id="ckReal" class="editin" size="4" inputmode="decimal" placeholder="10.2">
+          <span class="val">cm on a real ruler</span>
+          <button id="ckApply">Correct</button>
+        </div>
+      </details>
       <details class="help">
         <summary>Why does a ruler need calibrating?</summary>
         <p>A screen only knows its <strong>resolution</strong> (e.g. 1920×1080), not its physical
            size — a 24″ monitor and a 6″ phone can share the same resolution. Browsers assume a
-           fixed 96 pixels per inch, which is only right for some displays. Matching a card whose
-           size is standardized worldwide (ISO&nbsp;7810 ID-1) pins the ruler to real millimetres.</p>
+           fixed 96 pixels per inch, which is only right for some displays. Setting the display's
+           real size (or matching a card standardized worldwide, ISO&nbsp;7810 ID-1) pins the
+           ruler to real millimetres.</p>
       </details>
     </div>
   </section>
@@ -823,6 +842,21 @@
       resetCalibration();
       resetResolution();
     });
+    // Calibration-method chooser: show ONE flow at a time (size or card).
+    const calSize = document.getElementById("calSize");
+    const calCard = document.getElementById("calCard");
+    const chooseSize = document.getElementById("chooseSize");
+    const chooseCard = document.getElementById("chooseCard");
+    function pickMethod(size) {
+      calSize.hidden = !size;
+      calCard.hidden = size;
+      chooseSize.classList.toggle("active", size);
+      chooseCard.classList.toggle("active", !size);
+      if (size) syncDiagInput(); else syncCalUI();
+    }
+    chooseSize.addEventListener("click", () => pickMethod(true));
+    chooseCard.addEventListener("click", () => pickMethod(false));
+
     // Display-size (diagonal) entry — the major tunable, first in the panel.
     const diagIn = document.getElementById("diagIn");
     const diagUnit = document.getElementById("diagUnit");
